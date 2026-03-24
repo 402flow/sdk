@@ -50,10 +50,8 @@ The current target is modern Node.js with built-in Fetch API support.
 
 ## Repository Layout
 
-The publishable npm package lives under `packages/sdk`.
-
-This repository keeps the package source, tests, and publish configuration together in a small workspace, but the public consumer surface is the single package `@402flow/sdk`.
+This repository is a single-package npm repo. The public consumer surface is the package `@402flow/sdk`.
 
 ## Publish
 
-The package is published from `packages/sdk`.
+The package is published from the repository root.
