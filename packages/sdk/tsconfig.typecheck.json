@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "noEmit": true,
+    "rootDir": "../..",
+    "paths": {
+      "@402flow/sdk": ["./src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}
