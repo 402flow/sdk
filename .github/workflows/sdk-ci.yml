@@ -1,0 +1,48 @@
+name: SDK CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate source tree
+        run: npm run check
+
+      - name: Pack SDK artifact
+        run: |
+          set -e
+          mkdir -p artifacts
+          TARBALL="$(npm pack --pack-destination artifacts | tail -n 1)"
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
+
+      - name: Smoke test packed artifact
+        run: |
+          set -e
+          TMP_DIR="$(mktemp -d)"
+          cd "$TMP_DIR"
+          npm init -y >/dev/null 2>&1
+          npm install "/home/runner/work/sdk/sdk/artifacts/$TARBALL" >/dev/null 2>&1
+          node --input-type=module -e "const sdk = await import('@402flow/sdk'); if (!sdk.AgentPayClient || !sdk.createAgentPayClient) { throw new Error('Packed artifact missing expected root exports.'); }"
+
+      - name: Upload packed artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-package
+          path: artifacts/*.tgz
