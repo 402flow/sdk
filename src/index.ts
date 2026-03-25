@@ -543,3 +543,5 @@ export class AgentPayClient {
 export function createAgentPayClient(options: AgentPayClientOptions) {
   return new AgentPayClient(options);
 }
+
+export * from './contracts.js';

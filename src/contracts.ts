@@ -22,6 +22,25 @@ export const fulfillmentStatusSchema = z.enum([
 ]);
 export type FulfillmentStatus = z.infer<typeof fulfillmentStatusSchema>;
 
+export const receiptStatusSchema = z.enum([
+  'confirmed',
+  'provisional',
+  'refunded',
+  'void',
+]);
+export type ReceiptStatus = z.infer<typeof receiptStatusSchema>;
+
+export const receiptReconciliationStatusSchema = z.enum([
+  'none',
+  'required',
+  'in_progress',
+  'resolved',
+  'refunded',
+]);
+export type ReceiptReconciliationStatus = z.infer<
+  typeof receiptReconciliationStatusSchema
+>;
+
 export const paymentProofSourceSchema = z.enum(['merchant', 'local_simulation']);
 export type PaymentProofSource = z.infer<typeof paymentProofSourceSchema>;
 
@@ -209,12 +228,16 @@ export const sdkReceiptSchema = z.object({
   protocol: paidRequestProtocolSchema,
   money: normalizedMoneySchema,
   authorizationOutcome: receiptAuthorizationOutcomeSchema,
+  status: receiptStatusSchema,
+  reconciliationStatus: receiptReconciliationStatusSchema,
   requestUrl: z.string().url(),
   requestMethod: paidRequestHttpMethodSchema,
+  canonicalSettlementKey: z.string().min(1).max(255).optional(),
   paymentReference: z.string().min(1).max(128).optional(),
   evidenceSource: paymentProofSourceSchema.optional(),
   settlementEvidenceClass: settlementEvidenceClassSchema.optional(),
   settlementIdentifier: z.string().min(1).max(255).optional(),
+  supersededByReceiptId: z.string().uuid().optional(),
   fulfillmentStatus: fulfillmentStatusSchema.optional(),
   createdAt: z.string().datetime(),
   completedAt: z.string().datetime().optional(),
@@ -255,7 +278,7 @@ export const sdkPaymentDecisionExecutionFailedResponseSchema = z.object({
   outcome: z.literal('execution_failed'),
   paidRequestId: z.string().uuid(),
   paymentAttemptId: z.string().uuid(),
-  reasonCode: z.enum(['merchant_rejected', 'settlement_proof_conflict']),
+  reasonCode: z.literal('merchant_rejected'),
   reason: z.string().min(1),
   merchantResponse: sdkMerchantResponseSchema,
   evidence: z.record(z.unknown()).optional(),
