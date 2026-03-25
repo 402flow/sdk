@@ -345,13 +345,19 @@ export class AgentPayClient {
       await this.getRuntimeAuthorizationHeader(),
     );
 
-    if (!decisionResponse.ok) {
-      throw new Error(
-        `Payment decision failed with status ${decisionResponse.status}.`,
-      );
-    }
+    const responseBody = await decisionResponse.text();
 
-    return sdkPaymentDecisionResponseSchema.parse(await decisionResponse.json());
+    try {
+      return sdkPaymentDecisionResponseSchema.parse(JSON.parse(responseBody));
+    } catch {
+      if (!decisionResponse.ok) {
+        throw new Error(
+          `Payment decision failed with status ${decisionResponse.status}.`,
+        );
+      }
+
+      throw new Error('Payment decision response was not valid JSON.');
+    }
   }
 
   private mapDecisionToPaidResponse(

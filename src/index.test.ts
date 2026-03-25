@@ -230,6 +230,61 @@ describe('AgentPayClient', () => {
     expect(result.reason).toBe('Policy review required.');
   });
 
+  it('parses structured execution failures even when the control plane returns 409', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'execution_failed',
+            paidRequestId: '00000000-0000-0000-0000-000000000140',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000240',
+            reasonCode: 'settlement_proof_conflict',
+            reason:
+              'Settlement proof is already linked to a different payment attempt.',
+            merchantResponse: {
+              status: 200,
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: '{"ok":true}',
+            },
+            evidence: {
+              conflictType: 'receipt_settlement_proof_collision',
+            },
+          }),
+          {
+            status: 409,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      fetch: fetchMock,
+    });
+
+    const result = await client.fetchPaid(
+      'https://merchant.example.com/premium',
+      { method: 'GET' },
+      baseContext,
+      {
+        target: baseTarget,
+        challenge: baseChallenge,
+      },
+    );
+
+    expect(result.kind).toBe('execution_failed');
+    if (result.kind !== 'execution_failed') {
+      throw new Error(`Unexpected result kind: ${result.kind}`);
+    }
+    expect(result.reason).toBe(
+      'Settlement proof is already linked to a different payment attempt.',
+    );
+    expect(result.decision.reasonCode).toBe('settlement_proof_conflict');
+  });
+
   it('maps execution progress states to non-terminal SDK results', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
