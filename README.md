@@ -74,3 +74,10 @@ This repository is a single-package npm repo. The public consumer surface is the
 ## Publish
 
 The package is published from the repository root.
+
+```
+npm install
+npm run check
+npm run pack:check
+npm publish --access public
+```
