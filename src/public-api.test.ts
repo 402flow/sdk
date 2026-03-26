@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   AgentPayClient,
+  FetchPaidError,
   createAgentPayClient,
   sdkPaymentDecisionResponseSchema,
   sdkReceiptSchema,
@@ -12,10 +13,7 @@ const baseContext = {
   agent: 'synthetic-demo-agent',
 };
 
-const baseTarget = {
-  merchant: 'synthetic-demo-merchant',
-  paymentRail: 'synthetic-demo-rail',
-};
+const basePaymentRail = 'synthetic-demo-rail';
 
 describe('public SDK entrypoint', () => {
   it('exports receipt finality schemas through the public package import', () => {
@@ -120,9 +118,9 @@ describe('public SDK entrypoint', () => {
     const result = await client.fetchPaid(
       'https://merchant.example.com/data',
       { method: 'GET' },
-      baseContext,
       {
-        target: baseTarget,
+        ...baseContext,
+        paymentRail: basePaymentRail,
         challenge: {
           protocol: 'x402',
           money: {
@@ -142,7 +140,7 @@ describe('public SDK entrypoint', () => {
     expect(result.kind).toBe('success');
   });
 
-  it('supports an x402 challenge path through the public package import', async () => {
+  it('throws FetchPaidError for denied x402 challenge paths through the public package import', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
       async () =>
         new Response(
@@ -166,12 +164,10 @@ describe('public SDK entrypoint', () => {
       fetch: fetchMock,
     });
 
-    const result = await client.fetchPaid(
-      'https://merchant.example.com/premium',
-      { method: 'GET' },
-      baseContext,
-      {
-        target: baseTarget,
+    const error = await client
+      .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
+        ...baseContext,
+        paymentRail: basePaymentRail,
         challenge: {
           protocol: 'x402',
           money: {
@@ -183,13 +179,14 @@ describe('public SDK entrypoint', () => {
           },
           raw: {},
         },
-      },
-    );
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(result.kind).toBe('denied');
-    if (result.kind !== 'denied') {
-      throw new Error(`Unexpected result kind: ${result.kind}`);
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
     }
-    expect(result.policyReviewEventId).toBe('00000000-0000-0000-0000-000000000031');
+    expect(error.kind).toBe('denied');
+    expect(error.policyReviewEventId).toBe('00000000-0000-0000-0000-000000000031');
   });
 });

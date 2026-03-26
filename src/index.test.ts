@@ -1,16 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { AgentPayClient, createAgentPayClient } from './index.js';
+import {
+  AgentPayClient,
+  FetchPaidError,
+  createAgentPayClient,
+} from './index.js';
 
 const baseContext = {
   organization: 'acme-labs',
   agent: 'synthetic-demo-agent',
 };
 
-const baseTarget = {
-  merchant: 'synthetic-demo-merchant',
-  paymentRail: 'synthetic-demo-rail',
-};
+const basePaymentRail = 'synthetic-demo-rail';
 
 const baseChallenge = {
   protocol: 'x402' as const,
@@ -53,8 +54,7 @@ describe('AgentPayClient', () => {
     const result = await client.fetchPaid(
       'https://merchant.example.com/data',
       { method: 'GET' },
-      baseContext,
-      { target: baseTarget },
+      { ...baseContext, paymentRail: basePaymentRail },
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -108,11 +108,7 @@ describe('AgentPayClient', () => {
         },
         body: '{"hello":"world"}',
       },
-      baseContext,
-      {
-        target: baseTarget,
-        challenge: baseChallenge,
-      },
+      { ...baseContext, paymentRail: basePaymentRail, challenge: baseChallenge },
     );
 
     expect(result.kind).toBe('success');
@@ -181,7 +177,7 @@ describe('AgentPayClient', () => {
     });
   });
 
-  it('surfaces policy review denials as denied responses with the review event id', async () => {
+  it('throws policy review denials with the review event id', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
       async () =>
         new Response(
@@ -205,12 +201,10 @@ describe('AgentPayClient', () => {
       fetch: fetchMock,
     });
 
-    const result = await client.fetchPaid(
-      'https://merchant.example.com/premium',
-      { method: 'GET' },
-      baseContext,
-      {
-        target: baseTarget,
+    const error = await client
+      .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
+        ...baseContext,
+        paymentRail: basePaymentRail,
         challenge: {
           ...baseChallenge,
           money: {
@@ -219,18 +213,19 @@ describe('AgentPayClient', () => {
             amountMinor: '50000000',
           },
         },
-      },
-    );
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(result.kind).toBe('denied');
-    if (result.kind !== 'denied') {
-      throw new Error(`Unexpected result kind: ${result.kind}`);
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
     }
-    expect(result.policyReviewEventId).toBe('00000000-0000-0000-0000-000000000031');
-    expect(result.reason).toBe('Policy review required.');
+    expect(error.kind).toBe('denied');
+    expect(error.policyReviewEventId).toBe('00000000-0000-0000-0000-000000000031');
+    expect(error.reason).toBe('Policy review required.');
   });
 
-  it('parses structured execution failures when the control plane returns non-ok JSON', async () => {
+  it('throws structured execution failures when the control plane returns non-ok JSON', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
       async () =>
         new Response(
@@ -264,22 +259,21 @@ describe('AgentPayClient', () => {
       fetch: fetchMock,
     });
 
-    const result = await client.fetchPaid(
-      'https://merchant.example.com/premium',
-      { method: 'GET' },
-      baseContext,
-      {
-        target: baseTarget,
+    const error = await client
+      .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
+        ...baseContext,
+        paymentRail: basePaymentRail,
         challenge: baseChallenge,
-      },
-    );
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(result.kind).toBe('execution_failed');
-    if (result.kind !== 'execution_failed') {
-      throw new Error(`Unexpected result kind: ${result.kind}`);
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
     }
-    expect(result.reason).toBe('Merchant rejected the paid request.');
-    expect(result.decision.reasonCode).toBe('merchant_rejected');
+    expect(error.kind).toBe('execution_failed');
+    expect(error.reason).toBe('Merchant rejected the paid request.');
+    expect(error.decision.reasonCode).toBe('merchant_rejected');
   });
 
   it('returns delivered merchant responses with a provisional receipt on allow outcomes', async () => {
@@ -326,9 +320,9 @@ describe('AgentPayClient', () => {
     const result = await client.fetchPaid(
       'https://merchant.example.com/data',
       { method: 'GET' },
-      baseContext,
       {
-        target: baseTarget,
+        ...baseContext,
+        paymentRail: basePaymentRail,
         challenge: {
           ...baseChallenge,
           money: {
@@ -354,7 +348,7 @@ describe('AgentPayClient', () => {
     );
   });
 
-  it('returns paid fulfillment failures with provisional receipts when payment likely succeeded', async () => {
+  it('throws paid fulfillment failures with provisional receipts when payment likely succeeded', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
       async () =>
         new Response(
@@ -399,26 +393,25 @@ describe('AgentPayClient', () => {
       fetch: fetchMock,
     });
 
-    const result = await client.fetchPaid(
-      'https://merchant.example.com/data',
-      { method: 'GET' },
-      baseContext,
-      {
-        target: baseTarget,
+    const error = await client
+      .fetchPaid('https://merchant.example.com/data', { method: 'GET' }, {
+        ...baseContext,
+        paymentRail: basePaymentRail,
         challenge: baseChallenge,
-      },
-    );
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(result.kind).toBe('paid_fulfillment_failed');
-    if (result.kind !== 'paid_fulfillment_failed') {
-      throw new Error(`Unexpected result kind: ${result.kind}`);
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
     }
-    expect(result.receipt.status).toBe('provisional');
-    expect(result.receipt.reconciliationStatus).toBe('required');
-    expect(result.decision.merchantResponse.body).toBe(
+    expect(error.kind).toBe('paid_fulfillment_failed');
+    expect(error.receipt?.status).toBe('provisional');
+    expect(error.receipt?.reconciliationStatus).toBe('required');
+    expect(error.decision.merchantResponse.body).toBe(
       '{"error":"upstream unavailable"}',
     );
-    await expect(result.response.text()).resolves.toBe(
+    await expect(error.response.text()).resolves.toBe(
       '{"error":"upstream unavailable"}',
     );
   });
@@ -473,20 +466,12 @@ describe('AgentPayClient', () => {
     const first = await client.fetchPaid(
       'https://merchant.example.com/replay',
       { method: 'GET' },
-      baseContext,
-      {
-        target: baseTarget,
-        challenge: baseChallenge,
-      },
+      { ...baseContext, paymentRail: basePaymentRail, challenge: baseChallenge },
     );
     const second = await client.fetchPaid(
       'https://merchant.example.com/replay',
       { method: 'GET' },
-      baseContext,
-      {
-        target: baseTarget,
-        challenge: baseChallenge,
-      },
+      { ...baseContext, paymentRail: basePaymentRail, challenge: baseChallenge },
     );
 
     expect(first.kind).toBe('success');
@@ -501,7 +486,7 @@ describe('AgentPayClient', () => {
     await expect(second.response.text()).resolves.toBe('{"result":"stable"}');
   });
 
-  it('maps execution progress states to non-terminal SDK results', async () => {
+  it('throws execution progress states as typed SDK errors', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockImplementationOnce(
@@ -543,29 +528,34 @@ describe('AgentPayClient', () => {
       fetch: fetchMock,
     });
 
-    const executing = await client.fetchPaid(
-      'https://merchant.example.com/pending',
-      { method: 'GET' },
-      baseContext,
-      { target: baseTarget, challenge: baseChallenge },
-    );
-    const inconclusive = await client.fetchPaid(
-      'https://merchant.example.com/inconclusive',
-      { method: 'GET' },
-      baseContext,
-      { target: baseTarget, challenge: baseChallenge },
-    );
+    const executing = await client
+      .fetchPaid('https://merchant.example.com/pending', { method: 'GET' }, {
+        ...baseContext,
+        paymentRail: basePaymentRail,
+        challenge: baseChallenge,
+      })
+      .catch((caught: unknown) => caught);
+    const inconclusive = await client
+      .fetchPaid('https://merchant.example.com/inconclusive', { method: 'GET' }, {
+        ...baseContext,
+        paymentRail: basePaymentRail,
+        challenge: baseChallenge,
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(executing.kind).toBe('execution_pending');
-    if (executing.kind !== 'execution_pending') {
-      throw new Error(`Unexpected result kind: ${executing.kind}`);
+    expect(executing).toBeInstanceOf(FetchPaidError);
+    if (!(executing instanceof FetchPaidError)) {
+      throw executing;
     }
+    expect(executing.kind).toBe('execution_pending');
     expect(executing.response.status).toBe(202);
     expect(executing.reason).toBe('Still executing.');
-    expect(inconclusive.kind).toBe('execution_inconclusive');
-    if (inconclusive.kind !== 'execution_inconclusive') {
-      throw new Error(`Unexpected result kind: ${inconclusive.kind}`);
+
+    expect(inconclusive).toBeInstanceOf(FetchPaidError);
+    if (!(inconclusive instanceof FetchPaidError)) {
+      throw inconclusive;
     }
+    expect(inconclusive.kind).toBe('execution_inconclusive');
     expect(inconclusive.response.status).toBe(202);
     expect(inconclusive.reason).toBe('Merchant response lost.');
   });

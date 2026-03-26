@@ -178,16 +178,13 @@ export type NormalizedMoney = z.infer<typeof normalizedMoneySchema>;
 export const paidRequestContextSchema = z.object({
   organization: externalIdSchema,
   agent: externalIdSchema,
-  purpose: z.string().min(1).max(200).optional(),
+  description: z.string().min(1).max(200).optional(),
   metadata: z.record(z.unknown()).optional(),
 });
 export type PaidRequestContext = z.infer<typeof paidRequestContextSchema>;
 
-export const paidRequestTargetSchema = z.object({
-  merchant: externalIdSchema,
-  paymentRail: externalIdSchema,
-});
-export type PaidRequestTarget = z.infer<typeof paidRequestTargetSchema>;
+export const paidRequestPaymentRailSchema = externalIdSchema;
+export type PaidRequestPaymentRail = z.infer<typeof paidRequestPaymentRailSchema>;
 
 export const paidRequestHttpRequestSchema = z.object({
   url: z.string().url(),
@@ -209,9 +206,9 @@ export type PaidRequestChallenge = z.infer<typeof paidRequestChallengeSchema>;
 
 export const sdkPaymentDecisionRequestSchema = z.object({
   context: paidRequestContextSchema,
-  target: paidRequestTargetSchema,
   request: paidRequestHttpRequestSchema,
   challenge: paidRequestChallengeSchema,
+  paymentRail: paidRequestPaymentRailSchema.optional(),
   idempotencyKey: z.string().min(1).max(128).optional(),
 });
 export type SdkPaymentDecisionRequest = z.infer<

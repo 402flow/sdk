@@ -9,7 +9,6 @@ import {
   sdkPaymentDecisionResponseSchema,
   sdkReceiptResponseSchema,
   type PaidRequestContext,
-  type PaidRequestTarget,
   type SdkMerchantResponse,
   type SdkPaymentDecisionResponse,
   type SdkReceipt,
@@ -34,10 +33,12 @@ export type AgentPayClientOptions = {
 };
 
 export type FetchPaidOptions = {
-  target: PaidRequestTarget;
+  paymentRail?: string;
   challenge?: ParsedChallenge;
   idempotencyKey?: string;
 };
+
+export type FetchPaidRequest = PaidRequestContext & FetchPaidOptions;
 
 type PaidProtocol = ParsedChallenge['protocol'];
 type DenyDecision = Extract<SdkPaymentDecisionResponse, { outcome: 'deny' }>;
@@ -137,15 +138,54 @@ export type PreflightFailedPaidResponse = PaidResponseBase & {
   decision: PreflightFailedDecision;
 };
 
-export type PaidResponse =
-  | PassthroughPaidResponse
-  | SuccessPaidResponse
+export type FetchPaidFailureResponse =
   | PaidFulfillmentFailedResponse
   | DeniedPaidResponse
   | ExecutionPendingPaidResponse
   | ExecutionInconclusivePaidResponse
   | ExecutionFailedPaidResponse
   | PreflightFailedPaidResponse;
+
+export type PaidResponse = PassthroughPaidResponse | SuccessPaidResponse;
+
+export class FetchPaidError<
+  TResponse extends FetchPaidFailureResponse = FetchPaidFailureResponse,
+> extends Error {
+  readonly details: TResponse;
+  readonly kind: TResponse['kind'];
+  readonly protocol: TResponse['protocol'];
+  readonly response: Response;
+  readonly reason: string;
+  readonly decision: TResponse['decision'];
+  readonly paidRequestId: string | undefined;
+  readonly paymentAttemptId: string | undefined;
+  readonly receiptId: string | undefined;
+  readonly receipt: SdkReceipt | undefined;
+  readonly policyReviewEventId: string | undefined;
+
+  constructor(details: TResponse) {
+    super(`${details.kind}: ${details.reason}`);
+    this.name = 'FetchPaidError';
+    this.details = details;
+    this.kind = details.kind;
+    this.protocol = details.protocol;
+    this.response = details.response;
+    this.reason = details.reason;
+    this.decision = details.decision;
+    this.paidRequestId = 'paidRequestId' in details ? details.paidRequestId : undefined;
+    this.paymentAttemptId =
+      'paymentAttemptId' in details ? details.paymentAttemptId : undefined;
+    this.receiptId = 'receiptId' in details ? details.receiptId : undefined;
+    this.receipt = 'receipt' in details ? details.receipt : undefined;
+    this.policyReviewEventId =
+      'policyReviewEventId' in details ? details.policyReviewEventId : undefined;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export function isFetchPaidError(error: unknown): error is FetchPaidError {
+  return error instanceof FetchPaidError;
+}
 
 type CachedRuntimeToken = {
   token: string;
@@ -255,10 +295,9 @@ export class AgentPayClient {
   async fetchPaid(
     input: string,
     init: RequestInit = {},
-    context: PaidRequestContext,
-    options: FetchPaidOptions,
+    request: FetchPaidRequest,
   ): Promise<PaidResponse> {
-    let challenge = options.challenge;
+    let challenge = request.challenge;
 
     if (!challenge) {
       const initialResponse = await this.fetchImpl(input, init);
@@ -276,8 +315,7 @@ export class AgentPayClient {
     const decisionRequest = await this.createDecisionRequest(
       input,
       init,
-      context,
-      options,
+      request,
       challenge,
     );
     const decision = await this.requestPaymentDecision(decisionRequest);
@@ -304,15 +342,14 @@ export class AgentPayClient {
   private async createDecisionRequest(
     input: string,
     init: RequestInit,
-    context: PaidRequestContext,
-    options: FetchPaidOptions,
+    request: FetchPaidRequest,
     challenge: ParsedChallenge,
   ) {
     const requestBody = getReplayableRequestBody(init.body);
+    const { challenge: _challenge, idempotencyKey, paymentRail, ...context } = request;
 
     return sdkPaymentDecisionRequestSchema.parse({
       context,
-      target: options.target,
       request: {
         url: input,
         method: (init.method ?? 'GET').toUpperCase(),
@@ -326,7 +363,8 @@ export class AgentPayClient {
         raw: challenge.raw,
         ...(challenge.payee ? { payee: challenge.payee } : {}),
       },
-      idempotencyKey: options.idempotencyKey,
+      ...(paymentRail ? { paymentRail } : {}),
+      idempotencyKey,
     });
   }
 
@@ -391,7 +429,7 @@ export class AgentPayClient {
           decision,
         };
 
-        return response;
+        throw new FetchPaidError(response);
       }
       case 'deny': {
         const response: DeniedPaidResponse = {
@@ -408,7 +446,7 @@ export class AgentPayClient {
             : {}),
         };
 
-        return response;
+        throw new FetchPaidError(response);
       }
       case 'executing': {
         const response: ExecutionPendingPaidResponse = {
@@ -421,7 +459,7 @@ export class AgentPayClient {
           decision,
         };
 
-        return response;
+        throw new FetchPaidError(response);
       }
       case 'inconclusive': {
         const response: ExecutionInconclusivePaidResponse = {
@@ -434,7 +472,7 @@ export class AgentPayClient {
           decision,
         };
 
-        return response;
+        throw new FetchPaidError(response);
       }
       case 'execution_failed': {
         const response: ExecutionFailedPaidResponse = {
@@ -447,7 +485,7 @@ export class AgentPayClient {
           decision,
         };
 
-        return response;
+        throw new FetchPaidError(response);
       }
       case 'preflight_failed': {
         const response: PreflightFailedPaidResponse = {
@@ -460,7 +498,7 @@ export class AgentPayClient {
           decision,
         };
 
-        return response;
+        throw new FetchPaidError(response);
       }
     }
   }

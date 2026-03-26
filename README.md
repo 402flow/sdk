@@ -10,20 +10,6 @@ npm install @402flow/sdk
 
 ## Usage
 
-### Runtime Token
-
-```ts
-import { AgentPayClient } from '@402flow/sdk';
-
-const client = new AgentPayClient({
-	controlPlaneBaseUrl: 'https://402flow.ai',
-	auth: {
-		type: 'runtimeToken',
-		runtimeToken: process.env.AGENT_PAY_RUNTIME_TOKEN ?? '',
-	},
-});
-```
-
 ### Bootstrap Key
 
 ```ts
@@ -38,42 +24,65 @@ const client = new AgentPayClient({
 });
 ```
 
-When you configure `bootstrapKey` auth, the SDK exchanges that credential for a runtime token and reuses the runtime token for subsequent control-plane calls until it needs refresh.
+For most SDK integrations, `bootstrapKey` is the recommended auth mode. The SDK exchanges it for a short-lived runtime token, caches that token, and refreshes it automatically before expiry.
+
+### fetchPaid()
+
+Call `fetchPaid()` with the merchant URL, the outgoing request, and one control-plane request object.
+
+```ts
+try {
+	const result = await client.fetchPaid(
+		'https://merchant.example.com/reports/daily',
+		{
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+			},
+			body: JSON.stringify({
+				date: '2026-03-25',
+			}),
+		},
+		{
+			organization: 'acme-labs',
+			agent: 'reporting-worker',
+			paymentRail: 'base-usdc',
+			description: 'sync daily paid report',
+			idempotencyKey: 'daily-report-2026-03-25',
+		},
+	);
+	const paidContent = await result.response.json();
+	console.log('paid content:', paidContent);
+} catch (error) {
+	console.error('paid request failed', error);
+	throw error;
+}
+```
+
+### fetchPaid errors
+
+`fetchPaid()` throws `FetchPaidError` for plocy denials and other failures:
+
+1. `denied`: the control plane denied the paid request before execution becuase of a policy violation
+2. `preflight_failed`: the request was incompatible with paid execution before payment started
+3. `execution_pending`: a safe retry attached to an in-flight paid attempt that is still executing
+4. `execution_failed`: payment failed, no receipt was produced, and no paid content was delivered
+5. `paid_fulfillment_failed`: payment was accepted and a receipt exists, but the merchant did not deliver the paid content
+6. `execution_inconclusive`: the system could not conclusively determine the payment outcome
 
 ## Receipt Semantics
 
-Receipt-bearing outcomes expose caller-visible finality directly on `receipt`.
+`receipt.status = 'confirmed'` means the control plane has chain-backed settlement attribution for the paid attempt. `receipt.status = 'provisional'` means the paid outcome was supportable by merchant provided evidence, but final settlement attribution is still pending on-chain reconciliation.
 
-Key fields:
+## Notes
 
-1. `receipt.status`: `confirmed`, `provisional`, `refunded`, or `void`
-2. `receipt.reconciliationStatus`: optional diagnostic progress about settlement attribution when the control plane has it
-3. `receipt.canonicalSettlementKey`: present when the control plane has a stronger canonical settlement identity
-4. `receipt.supersededByReceiptId`: present when a provisional receipt has later been replaced by a successor receipt
-
-Interpretation rules:
-
-1. a `success` result can still carry a provisional receipt if the merchant response was delivered but settlement attribution remains ambiguous
-2. a `paid_fulfillment_failed` result can also carry a provisional receipt when payment was supportable but fulfillment failed
-3. deterministic replay preserves the durable paid outcome instead of degrading a previously delivered response into a generic failure
-4. callers should treat provisional receipts as real paid-attempt evidence, but not as proof of uniquely attributed final settlement
-5. the SDK surfaces caller-visible receipt truth; it does not assume any dedicated reconciliation queue or operator workflow exists
-
-## Runtime Requirements
-
-Use this SDK from modern Node.js environments with built-in `fetch` support.
-
-That matters because the SDK uses the Fetch API directly, not only when it calls `fetchPaid()`, but also when it normalizes headers and constructs response objects while mapping control-plane decisions back into SDK results. In practice, the SDK expects `fetch`, `Headers`, and `Response` to be available in the runtime.
-
-The current target is modern Node.js with built-in Fetch API support.
-
-## Repository Layout
-
-This repository is a single-package npm repo. The public consumer surface is the package `@402flow/sdk`.
+1. a `success` will always carry a receipt and the paid content
+2. a `paid_fulfillment_failed` result will also carry a receipt when the merchant took payment but fulfillment failed
+3. callers should treat provisional receipts as payment attempt evidence, not as proof of final settlement
+4. later chain analysis in the control plane will advance a provisional receipt to confirmed, refunded, void, or expired
+5. if you safely retry the same logical paid request with the same `idempotencyKey`, the SDK returns the same durable paid outcome and receipt instead of creating a second paid attempt
 
 ## Publish
-
-The package is published from the repository root.
 
 ```
 npm install
