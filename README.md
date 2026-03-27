@@ -28,7 +28,7 @@ For most SDK integrations, `bootstrapKey` is the recommended auth mode. The SDK 
 
 ### fetchPaid()
 
-Call `fetchPaid()` with the merchant URL, the outgoing request, and one control-plane request object.
+Call `fetchPaid()` with the merchant URL, the outgoing request, and a control-plane context object.
 
 ```ts
 try {
