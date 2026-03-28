@@ -9,5 +9,6 @@
       "@402flow/sdk": ["./src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "exclude": [],
+  "include": ["src/**/*.ts", "vitest.config.ts"]
 }

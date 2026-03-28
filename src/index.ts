@@ -413,7 +413,7 @@ export class AgentPayClient {
       }
     }
 
-    const decisionRequest = await this.createDecisionRequest(
+    const decisionRequest = this.createDecisionRequest(
       input,
       init,
       request,
@@ -443,7 +443,7 @@ export class AgentPayClient {
     return sdkReceiptResponseSchema.parse(await response.json());
   }
 
-  private async createDecisionRequest(
+  private createDecisionRequest(
     input: string,
     init: RequestInit,
     request: FetchPaidRequest,

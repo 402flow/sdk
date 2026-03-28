@@ -42,9 +42,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "check": "npm run lint && npm run typecheck && npm test",
+    "check": "npm run lint && npm test",
     "clean": "node -e \"const fs = require('node:fs'); for (const path of ['dist', 'tsconfig.tsbuildinfo', 'tsconfig.typecheck.tsbuildinfo']) { fs.rmSync(path, { recursive: true, force: true }); }\"",
-    "lint": "eslint src",
+    "lint": "eslint src vitest.config.ts && npm run typecheck",
     "pack:check": "npm run clean && npm run build && npm pack --dry-run",
     "prepack": "npm run clean && npm run build",
     "test": "vitest run",

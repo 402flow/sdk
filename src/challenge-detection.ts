@@ -43,7 +43,7 @@ export async function detectChallengeFromResponse(response: Response) {
   }
 
   try {
-    const payload = await response.clone().json();
+    const payload = (await response.clone().json()) as unknown;
 
     return parseBodyChallenge(payload);
   } catch {

@@ -58,6 +58,9 @@ describe('public SDK entrypoint', () => {
     });
 
     expect(decision.outcome).toBe('allow');
+    if (decision.outcome !== 'allow') {
+      throw new Error('Expected allow decision.');
+    }
     expect(decision.receipt.status).toBe('provisional');
     expect(decision.merchantResponse.body).toBe('{"ok":true}');
   });
