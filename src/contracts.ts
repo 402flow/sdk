@@ -197,10 +197,8 @@ export type PaidRequestHttpRequest = z.infer<typeof paidRequestHttpRequestSchema
 
 export const paidRequestChallengeSchema = z.object({
   protocol: paidRequestProtocolSchema,
-  money: normalizedMoneySchema,
-  payee: z.string().min(1).max(255).optional(),
-  memo: z.string().min(1).max(500).optional(),
-  raw: z.record(z.unknown()).default({}),
+  headers: z.record(z.string()).default({}),
+  body: z.unknown().optional(),
 });
 export type PaidRequestChallenge = z.infer<typeof paidRequestChallengeSchema>;
 

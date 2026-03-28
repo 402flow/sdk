@@ -1,41 +1,104 @@
-import {
-  createParsedChallenge,
-  getX402PaymentRequired,
-  type ParsedChallenge,
-} from './challenge-types.js';
-import {
-  parseX402V1BodyChallenge,
-  parseX402V1HeaderChallenge,
-  parseX402V1PaymentResponseHeader,
-} from './x402-v1.js';
-import {
-  parseX402V2BodyChallenge,
-  parseX402V2HeaderChallenge,
-  parseX402V2PaymentResponseHeader,
-} from './x402-v2.js';
-import { monetaryAmountToMinorUnits, normalizedMoneySchema } from './contracts.js';
+import type { PaidRequestProtocol } from './contracts.js';
 
-export async function detectChallengeFromResponse(response: Response) {
-  const v2HeaderChallenge = parseX402V2HeaderChallenge(response);
+export type DetectedChallenge = {
+  protocol: PaidRequestProtocol;
+  headers: Record<string, string>;
+  body?: unknown;
+};
 
-  if (v2HeaderChallenge) {
-    return v2HeaderChallenge;
+export async function detectChallengeFromResponse(
+  response: Response,
+): Promise<DetectedChallenge | undefined> {
+  const headers = captureHeaders(response.headers);
+  const protocol = sniffProtocolFromHeaders(headers);
+
+  if (protocol) {
+    const body = await tryReadJsonBody(response);
+
+    return body !== undefined
+      ? { protocol, headers, body }
+      : { protocol, headers };
   }
 
-  const v1HeaderChallenge = parseX402V1HeaderChallenge(response);
+  const body = await tryReadJsonBody(response);
 
-  if (v1HeaderChallenge) {
-    return v1HeaderChallenge;
+  if (body !== undefined) {
+    const bodyProtocol = sniffProtocolFromBody(body);
+
+    if (bodyProtocol) {
+      return { protocol: bodyProtocol, headers, body };
+    }
   }
 
-  const authenticateChallenge = parseAuthenticateHeader(
-    response.headers.get('www-authenticate'),
-  );
+  return undefined;
+}
 
-  if (authenticateChallenge) {
-    return authenticateChallenge;
+function captureHeaders(source: Headers): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  source.forEach((value, key) => {
+    headers[key] = value;
+  });
+
+  return headers;
+}
+
+function sniffProtocolFromHeaders(
+  headers: Record<string, string>,
+): PaidRequestProtocol | undefined {
+  if (headers['payment-required']) {
+    return 'x402';
   }
 
+  const paymentProtocol = headers['x-payment-protocol']?.toLowerCase();
+
+  if (paymentProtocol === 'x402' || paymentProtocol === 'l402') {
+    return paymentProtocol;
+  }
+
+  const authenticate = headers['www-authenticate'];
+
+  if (authenticate) {
+    const match = authenticate.match(/\b(x402|l402)\b/i);
+
+    if (match) {
+      return match[1]!.toLowerCase() as PaidRequestProtocol;
+    }
+  }
+
+  return undefined;
+}
+
+function sniffProtocolFromBody(
+  payload: unknown,
+): PaidRequestProtocol | undefined {
+  if (!payload || typeof payload !== 'object') {
+    return undefined;
+  }
+
+  const candidate =
+    'challenge' in payload &&
+    payload.challenge &&
+    typeof payload.challenge === 'object'
+      ? payload.challenge
+      : payload;
+
+  if ('x402Version' in candidate) {
+    return 'x402';
+  }
+
+  if ('protocol' in candidate && typeof candidate.protocol === 'string') {
+    const protocol = candidate.protocol.toLowerCase();
+
+    if (protocol === 'x402' || protocol === 'l402') {
+      return protocol;
+    }
+  }
+
+  return undefined;
+}
+
+async function tryReadJsonBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type') ?? '';
 
   if (!contentType.includes('application/json')) {
@@ -43,140 +106,8 @@ export async function detectChallengeFromResponse(response: Response) {
   }
 
   try {
-    const payload = (await response.clone().json()) as unknown;
-
-    return parseBodyChallenge(payload);
+    return await response.clone().json();
   } catch {
     return undefined;
   }
 }
-
-export function parseX402PaymentResponseFromHeaders(
-  headers: Headers | Record<string, string>,
-) {
-  const headerMap = headers instanceof Headers ? headers : new Headers(headers);
-  const v2Header = headerMap.get('payment-response');
-
-  if (v2Header) {
-    return parseX402V2PaymentResponseHeader(v2Header);
-  }
-
-  const v1Header = headerMap.get('x-payment-response');
-
-  if (v1Header) {
-    return parseX402V1PaymentResponseHeader(v1Header);
-  }
-
-  return undefined;
-}
-
-export function parseX402PaymentResponseHeader(headerValue: string | null) {
-  return (
-    parseX402V2PaymentResponseHeader(headerValue) ??
-    parseX402V1PaymentResponseHeader(headerValue)
-  );
-}
-
-function parseAuthenticateHeader(headerValue: string | null) {
-  if (!headerValue) {
-    return undefined;
-  }
-
-  const protocolMatch = headerValue.match(/\b(x402|l402)\b/i);
-
-  if (!protocolMatch) {
-    return undefined;
-  }
-
-  const protocol = protocolMatch[1]?.toLowerCase() as 'x402' | 'l402';
-  const attributePattern = /(amount|asset|precision|payee)="([^"]+)"/gi;
-  const attributes: Record<string, string> = {};
-  let match = attributePattern.exec(headerValue);
-
-  while (match) {
-    const attributeName = match[1];
-    const attributeValue = match[2];
-
-    if (attributeName && attributeValue) {
-      attributes[attributeName.toLowerCase()] = attributeValue;
-    }
-
-    match = attributePattern.exec(headerValue);
-  }
-
-  if (!attributes.amount || !attributes.asset) {
-    return undefined;
-  }
-
-  return createParsedChallenge({
-    protocol,
-    money: normalizedMoneySchema.parse({
-      asset: attributes.asset,
-      amount: attributes.amount,
-      amountMinor: monetaryAmountToMinorUnits(
-        attributes.amount,
-        Number(attributes.precision ?? '6'),
-      ),
-      precision: Number(attributes.precision ?? '6'),
-      unit: 'minor',
-    }),
-    payee: attributes.payee,
-    raw: {
-      authenticate: headerValue,
-    },
-  });
-}
-
-function parseBodyChallenge(payload: unknown) {
-  if (!payload || typeof payload !== 'object') {
-    return undefined;
-  }
-
-  const candidate =
-    'challenge' in payload && payload.challenge && typeof payload.challenge === 'object'
-      ? payload.challenge
-      : payload;
-
-  const v2Challenge = parseX402V2BodyChallenge(candidate);
-
-  if (v2Challenge) {
-    return v2Challenge;
-  }
-
-  const v1Challenge = parseX402V1BodyChallenge(candidate);
-
-  if (v1Challenge) {
-    return v1Challenge;
-  }
-
-  if (!candidate || typeof candidate !== 'object') {
-    return undefined;
-  }
-
-  const protocol =
-    'protocol' in candidate && typeof candidate.protocol === 'string'
-      ? candidate.protocol.toLowerCase()
-      : undefined;
-  const money = 'money' in candidate ? candidate.money : undefined;
-  const payee =
-    'payee' in candidate && typeof candidate.payee === 'string'
-      ? candidate.payee
-      : undefined;
-  const raw =
-    'raw' in candidate && candidate.raw && typeof candidate.raw === 'object'
-      ? (candidate.raw as Record<string, unknown>)
-      : undefined;
-
-  if ((protocol !== 'x402' && protocol !== 'l402') || !money) {
-    return undefined;
-  }
-
-  return createParsedChallenge({
-    protocol,
-    money: normalizedMoneySchema.parse(money),
-    payee,
-    raw: raw ?? (candidate as Record<string, unknown>),
-  });
-}
-
-export { getX402PaymentRequired, type ParsedChallenge };

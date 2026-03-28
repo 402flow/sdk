@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import {
   detectChallengeFromResponse,
-  type ParsedChallenge,
+  type DetectedChallenge,
 } from './challenge-detection.js';
 import {
   sdkPaymentDecisionRequestSchema,
@@ -41,14 +41,14 @@ export type AgentPayClientOptions = {
 
 export type FetchPaidOptions = {
   paymentRail?: string;
-  challenge?: ParsedChallenge;
+  challenge?: DetectedChallenge;
   idempotencyKey?: string;
 };
 
 export type FetchPaidRequest =
   Omit<PaidRequestContext, keyof AgentPayClientIdentity> & FetchPaidOptions;
 
-type PaidProtocol = ParsedChallenge['protocol'];
+type PaidProtocol = DetectedChallenge['protocol'];
 type DenyDecision = Extract<SdkPaymentDecisionResponse, { outcome: 'deny' }>;
 type ExecutingDecision = Extract<
   SdkPaymentDecisionResponse,
@@ -447,7 +447,7 @@ export class AgentPayClient {
     input: string,
     init: RequestInit,
     request: FetchPaidRequest,
-    challenge: ParsedChallenge,
+    challenge: DetectedChallenge,
   ) {
     const requestBody = getReplayableRequestBody(init.body);
     const {
@@ -471,9 +471,8 @@ export class AgentPayClient {
       },
       challenge: {
         protocol: challenge.protocol,
-        money: challenge.money,
-        raw: challenge.raw,
-        ...(challenge.payee ? { payee: challenge.payee } : {}),
+        headers: challenge.headers,
+        ...(challenge.body !== undefined ? { body: challenge.body } : {}),
       },
       ...(paymentRail ? { paymentRail } : {}),
       idempotencyKey,
@@ -735,3 +734,4 @@ export function createAgentPayClient(options: AgentPayClientOptions) {
 }
 
 export * from './contracts.js';
+export { detectChallengeFromResponse, type DetectedChallenge } from './challenge-detection.js';

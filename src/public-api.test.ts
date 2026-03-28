@@ -126,14 +126,8 @@ describe('public SDK entrypoint', () => {
         paymentRail: basePaymentRail,
         challenge: {
           protocol: 'x402',
-          money: {
-            asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-            amount: '0.010000',
-            amountMinor: '10000',
-            precision: 6,
-            unit: 'minor',
-          },
-          raw: {
+          headers: {},
+          body: {
             syntheticExecutionMode: 'mock',
           },
         },
@@ -173,14 +167,7 @@ describe('public SDK entrypoint', () => {
         paymentRail: basePaymentRail,
         challenge: {
           protocol: 'x402',
-          money: {
-            asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-            amount: '50.000000',
-            amountMinor: '50000000',
-            precision: 6,
-            unit: 'minor',
-          },
-          raw: {},
+          headers: {},
         },
       })
       .catch((caught: unknown) => caught);

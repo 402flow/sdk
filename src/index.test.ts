@@ -15,14 +15,15 @@ const basePaymentRail = 'synthetic-demo-rail';
 
 const baseChallenge = {
   protocol: 'x402' as const,
-  money: {
-    asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-    amount: '1.000000',
-    amountMinor: '1000000',
-    precision: 6,
-    unit: 'minor' as const,
-  },
-  raw: {},
+  headers: {} as Record<string, string>,
+};
+
+const baseMoney = {
+  asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  amount: '1.000000',
+  amountMinor: '1000000',
+  precision: 6,
+  unit: 'minor' as const,
 };
 
 const baseReceipt = {
@@ -33,7 +34,7 @@ const baseReceipt = {
   agentId: '00000000-0000-0000-0000-000000000002',
   merchantId: '00000000-0000-0000-0000-000000000003',
   protocol: 'x402' as const,
-  money: baseChallenge.money,
+  money: baseMoney,
   authorizationOutcome: 'allowed' as const,
   status: 'confirmed' as const,
   reconciliationStatus: 'none' as const,
@@ -228,14 +229,7 @@ describe('AgentPayClient', () => {
     const error = await client
       .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
         paymentRail: basePaymentRail,
-        challenge: {
-          ...baseChallenge,
-          money: {
-            ...baseChallenge.money,
-            amount: '50.000000',
-            amountMinor: '50000000',
-          },
-        },
+        challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
 
@@ -429,14 +423,7 @@ describe('AgentPayClient', () => {
       { method: 'GET' },
       {
         paymentRail: basePaymentRail,
-        challenge: {
-          ...baseChallenge,
-          money: {
-            ...baseChallenge.money,
-            amount: '2.000000',
-            amountMinor: '2000000',
-          },
-        },
+        challenge: baseChallenge,
       },
     );
 
@@ -664,5 +651,214 @@ describe('AgentPayClient', () => {
     expect(inconclusive.kind).toBe('execution_inconclusive');
     expect(inconclusive.response.status).toBe(202);
     expect(inconclusive.reason).toBe('Merchant response lost.');
+  });
+
+  it('detects a v2 payment-required header and forwards the parsed challenge to the control plane', async () => {
+    const paymentRequired = {
+      x402Version: 2,
+      error: 'Payment required',
+      resource: {
+        url: 'https://merchant.example.com/paid',
+        description: 'Paid endpoint',
+        mimeType: 'application/json',
+      },
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'eip155:84532',
+          amount: '1000000',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          payTo: '0xmerchant',
+          extra: { name: 'USDC', version: '2' },
+        },
+      ],
+    };
+    const paymentRequiredHeader = Buffer.from(
+      JSON.stringify(paymentRequired),
+      'utf8',
+    ).toString('base64');
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () =>
+        new Response('{}', {
+          status: 402,
+          headers: { 'payment-required': paymentRequiredHeader },
+        }),
+      )
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'allow',
+            paidRequestId: '00000000-0000-0000-0000-000000000140',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000240',
+            reasonCode: 'policy_allow',
+            reason: 'Allowed.',
+            merchantResponse: {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+              body: '{"ok":true}',
+            },
+            receipt: {
+              ...baseReceipt,
+              paidRequestId: '00000000-0000-0000-0000-000000000140',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000240',
+            },
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const result = await client.fetchPaid(
+      'https://merchant.example.com/paid',
+      { method: 'GET' },
+      { paymentRail: basePaymentRail },
+    );
+
+    expect(result.kind).toBe('success');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const controlPlaneCall = fetchMock.mock.calls[1];
+    const controlPlaneBody = JSON.parse(String(controlPlaneCall?.[1]?.body));
+
+    expect(controlPlaneBody.challenge).toMatchObject({
+      protocol: 'x402',
+      headers: {
+        'payment-required': paymentRequiredHeader,
+      },
+    });
+  });
+
+  it('detects a v1 explicit-header challenge and forwards it to the control plane', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () =>
+        new Response('payment required', {
+          status: 402,
+          headers: {
+            'x-payment-protocol': 'x402',
+            'x-payment-amount': '2.500000',
+            'x-payment-asset': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+            'x-payment-precision': '6',
+            'x-payment-payee': 'merchant-wallet',
+          },
+        }),
+      )
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'allow',
+            paidRequestId: '00000000-0000-0000-0000-000000000141',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000241',
+            reasonCode: 'policy_allow',
+            reason: 'Allowed.',
+            merchantResponse: {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+              body: '{"ok":true}',
+            },
+            receipt: {
+              ...baseReceipt,
+              paidRequestId: '00000000-0000-0000-0000-000000000141',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000241',
+            },
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const result = await client.fetchPaid(
+      'https://merchant.example.com/paid',
+      { method: 'GET' },
+      { paymentRail: basePaymentRail },
+    );
+
+    expect(result.kind).toBe('success');
+
+    const controlPlaneBody = JSON.parse(
+      String(fetchMock.mock.calls[1]?.[1]?.body),
+    );
+
+    expect(controlPlaneBody.challenge.protocol).toBe('x402');
+    expect(controlPlaneBody.challenge.headers).toMatchObject({
+      'x-payment-protocol': 'x402',
+      'x-payment-amount': '2.500000',
+      'x-payment-asset': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      'x-payment-precision': '6',
+      'x-payment-payee': 'merchant-wallet',
+    });
+  });
+
+  it('detects a www-authenticate challenge and forwards it to the control plane', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () =>
+        new Response('', {
+          status: 402,
+          headers: {
+            'www-authenticate': 'x402 amount="0.500000" asset="0x036CbD53842c5426634e7929541eC2318f3dCF7e"',
+          },
+        }),
+      )
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'allow',
+            paidRequestId: '00000000-0000-0000-0000-000000000142',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000242',
+            reasonCode: 'policy_allow',
+            reason: 'Allowed.',
+            merchantResponse: {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+              body: '{"ok":true}',
+            },
+            receipt: {
+              ...baseReceipt,
+              paidRequestId: '00000000-0000-0000-0000-000000000142',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000242',
+            },
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const result = await client.fetchPaid(
+      'https://merchant.example.com/paid',
+      { method: 'GET' },
+      { paymentRail: basePaymentRail },
+    );
+
+    expect(result.kind).toBe('success');
+
+    const controlPlaneBody = JSON.parse(
+      String(fetchMock.mock.calls[1]?.[1]?.body),
+    );
+
+    expect(controlPlaneBody.challenge.protocol).toBe('x402');
+    expect(controlPlaneBody.challenge.headers).toMatchObject({
+      'www-authenticate': 'x402 amount="0.500000" asset="0x036CbD53842c5426634e7929541eC2318f3dCF7e"',
+    });
   });
 });
