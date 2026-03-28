@@ -25,9 +25,16 @@ export type AgentPayAuth =
       runtimeToken: string;
     };
 
+export type AgentPayClientIdentity = Pick<
+  PaidRequestContext,
+  'organization' | 'agent'
+>;
+
 export type AgentPayClientOptions = {
   controlPlaneBaseUrl: string;
   auth: AgentPayAuth;
+  organization: string;
+  agent: string;
   fetch?: typeof fetch;
   headers?: Record<string, string>;
 };
@@ -38,7 +45,8 @@ export type FetchPaidOptions = {
   idempotencyKey?: string;
 };
 
-export type FetchPaidRequest = PaidRequestContext & FetchPaidOptions;
+export type FetchPaidRequest =
+  Omit<PaidRequestContext, keyof AgentPayClientIdentity> & FetchPaidOptions;
 
 type PaidProtocol = ParsedChallenge['protocol'];
 type DenyDecision = Extract<SdkPaymentDecisionResponse, { outcome: 'deny' }>;
@@ -62,6 +70,12 @@ type PaidFulfillmentFailedDecision = Extract<
   SdkPaymentDecisionResponse,
   { outcome: 'paid_fulfillment_failed' }
 >;
+type RequestFailedDecision = {
+  outcome: 'request_failed';
+  status: number;
+  message: string;
+  body?: unknown;
+};
 
 type PaidResponseBase = {
   protocol: PaidProtocol | 'none';
@@ -138,13 +152,21 @@ export type PreflightFailedPaidResponse = PaidResponseBase & {
   decision: PreflightFailedDecision;
 };
 
+export type RequestFailedPaidResponse = PaidResponseBase & {
+  kind: 'request_failed';
+  protocol: PaidProtocol;
+  reason: string;
+  decision: RequestFailedDecision;
+};
+
 export type FetchPaidFailureResponse =
   | PaidFulfillmentFailedResponse
   | DeniedPaidResponse
   | ExecutionPendingPaidResponse
   | ExecutionInconclusivePaidResponse
   | ExecutionFailedPaidResponse
-  | PreflightFailedPaidResponse;
+  | PreflightFailedPaidResponse
+  | RequestFailedPaidResponse;
 
 export type PaidResponse = PassthroughPaidResponse | SuccessPaidResponse;
 
@@ -229,6 +251,80 @@ function createMerchantResponse(merchantResponse: SdkMerchantResponse) {
   });
 }
 
+function createRawResponse(
+  status: number,
+  body: string,
+  headers: HeadersInit | undefined,
+) {
+  return new Response(body, {
+    status,
+    ...(headers ? { headers } : {}),
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getControlPlaneErrorMessage(body: unknown, fallback: string) {
+  if (!isRecord(body)) {
+    return fallback;
+  }
+
+  const message =
+    typeof body.message === 'string' && body.message.length > 0
+      ? body.message
+      : fallback;
+  const issues = body.issues;
+
+  if (!isRecord(issues)) {
+    return message;
+  }
+
+  const details: string[] = [];
+  const formErrors = issues.formErrors;
+
+  if (Array.isArray(formErrors)) {
+    for (const entry of formErrors) {
+      if (typeof entry === 'string' && entry.length > 0) {
+        details.push(entry);
+      }
+    }
+  }
+
+  const fieldErrors = issues.fieldErrors;
+
+  if (isRecord(fieldErrors)) {
+    for (const [field, value] of Object.entries(fieldErrors)) {
+      if (!Array.isArray(value)) {
+        continue;
+      }
+
+      const fieldMessages = value.filter(
+        (entry): entry is string => typeof entry === 'string' && entry.length > 0,
+      );
+
+      if (fieldMessages.length > 0) {
+        details.push(`${field}: ${fieldMessages.join(', ')}`);
+      }
+    }
+  }
+
+  return details.length > 0 ? `${message} ${details.join(' ')}` : message;
+}
+
+function tryParseJson(value: string) {
+  if (value.length === 0) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 function getReplayableRequestBody(body: RequestInit['body']) {
   if (body === undefined || body === null) {
     return undefined;
@@ -280,6 +376,7 @@ function parseRuntimeTokenResponse(payload: unknown) {
 export class AgentPayClient {
   private readonly controlPlaneBaseUrl: string;
   private readonly auth: AgentPayAuth;
+  private readonly identity: AgentPayClientIdentity;
   private readonly fetchImpl: typeof fetch;
   private readonly headers: Record<string, string> | undefined;
   private cachedRuntimeToken: CachedRuntimeToken | undefined;
@@ -288,6 +385,10 @@ export class AgentPayClient {
   constructor(options: AgentPayClientOptions) {
     this.controlPlaneBaseUrl = trimTrailingSlash(options.controlPlaneBaseUrl);
     this.auth = options.auth;
+    this.identity = {
+      organization: options.organization,
+      agent: options.agent,
+    };
     this.fetchImpl = options.fetch ?? fetch;
     this.headers = options.headers;
   }
@@ -318,7 +419,10 @@ export class AgentPayClient {
       request,
       challenge,
     );
-    const decision = await this.requestPaymentDecision(decisionRequest);
+    const decision = await this.requestPaymentDecision(
+      decisionRequest,
+      challenge.protocol,
+    );
 
     return this.mapDecisionToPaidResponse(decision, challenge.protocol);
   }
@@ -346,10 +450,18 @@ export class AgentPayClient {
     challenge: ParsedChallenge,
   ) {
     const requestBody = getReplayableRequestBody(init.body);
-    const { challenge: _challenge, idempotencyKey, paymentRail, ...context } = request;
+    const {
+      challenge: _challenge,
+      idempotencyKey,
+      paymentRail,
+      ...requestContext
+    } = request;
 
     return sdkPaymentDecisionRequestSchema.parse({
-      context,
+      context: {
+        ...this.identity,
+        ...requestContext,
+      },
       request: {
         url: input,
         method: (init.method ?? 'GET').toUpperCase(),
@@ -370,6 +482,7 @@ export class AgentPayClient {
 
   private async requestPaymentDecision(
     decisionRequest: ReturnType<typeof sdkPaymentDecisionRequestSchema.parse>,
+    protocol: PaidProtocol,
   ) {
     const decisionResponse = await this.controlPlaneFetch(
       '/api/sdk/payment-decisions',
@@ -384,18 +497,57 @@ export class AgentPayClient {
     );
 
     const responseBody = await decisionResponse.text();
+    const parsedBody = tryParseJson(responseBody);
 
-    try {
-      return sdkPaymentDecisionResponseSchema.parse(JSON.parse(responseBody));
-    } catch {
-      if (!decisionResponse.ok) {
-        throw new Error(
-          `Payment decision failed with status ${decisionResponse.status}.`,
-        );
+    if (parsedBody !== undefined) {
+      try {
+        return sdkPaymentDecisionResponseSchema.parse(parsedBody);
+      } catch {
+        // Fall through to request-failed handling below.
       }
-
-      throw new Error('Payment decision response was not valid JSON.');
     }
+
+    if (!decisionResponse.ok) {
+      throw new FetchPaidError<RequestFailedPaidResponse>({
+        kind: 'request_failed',
+        protocol,
+        response: createRawResponse(
+          decisionResponse.status,
+          responseBody,
+          decisionResponse.headers,
+        ),
+        reason: getControlPlaneErrorMessage(
+          parsedBody,
+          `Payment decision failed with status ${decisionResponse.status}.`,
+        ),
+        decision: {
+          outcome: 'request_failed',
+          status: decisionResponse.status,
+          message: getControlPlaneErrorMessage(
+            parsedBody,
+            `Payment decision failed with status ${decisionResponse.status}.`,
+          ),
+          ...(parsedBody !== undefined ? { body: parsedBody } : {}),
+        },
+      });
+    }
+
+    throw new FetchPaidError<RequestFailedPaidResponse>({
+      kind: 'request_failed',
+      protocol,
+      response: createRawResponse(
+        decisionResponse.status,
+        responseBody,
+        decisionResponse.headers,
+      ),
+      reason: 'Payment decision response did not match the SDK contract.',
+      decision: {
+        outcome: 'request_failed',
+        status: decisionResponse.status,
+        message: 'Payment decision response did not match the SDK contract.',
+        ...(parsedBody !== undefined ? { body: parsedBody } : {}),
+      },
+    });
   }
 
   private mapDecisionToPaidResponse(

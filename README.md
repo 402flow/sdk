@@ -17,6 +17,8 @@ import { AgentPayClient } from '@402flow/sdk';
 
 const client = new AgentPayClient({
 	controlPlaneBaseUrl: 'https://402flow.ai',
+	organization: 'acme-labs',
+	agent: 'reporting-worker',
 	auth: {
 		type: 'bootstrapKey',
 		bootstrapKey: process.env.AGENT_PAY_BOOTSTRAP_KEY ?? '',
@@ -24,11 +26,13 @@ const client = new AgentPayClient({
 });
 ```
 
+
+Create one `AgentPayClient` per agent identity. The client binds the organization and agent selectors up front, and `fetchPaid()` only carries request-specific context.
 For most SDK integrations, `bootstrapKey` is the recommended auth mode. The SDK exchanges it for a short-lived runtime token, caches that token, and refreshes it automatically before expiry.
 
 ### fetchPaid()
 
-Call `fetchPaid()` with the merchant URL, the outgoing request, and a control-plane context object.
+Call `fetchPaid()` with the merchant URL, the outgoing request, and request-specific control-plane context.
 
 ```ts
 try {
@@ -44,8 +48,6 @@ try {
 			}),
 		},
 		{
-			organization: 'acme-labs',
-			agent: 'reporting-worker',
 			paymentRail: 'base-usdc',
 			description: 'sync daily paid report',
 			idempotencyKey: 'daily-report-2026-03-25',

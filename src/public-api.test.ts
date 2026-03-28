@@ -112,6 +112,7 @@ describe('public SDK entrypoint', () => {
     const client = createAgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
@@ -119,7 +120,6 @@ describe('public SDK entrypoint', () => {
       'https://merchant.example.com/data',
       { method: 'GET' },
       {
-        ...baseContext,
         paymentRail: basePaymentRail,
         challenge: {
           protocol: 'x402',
@@ -161,12 +161,12 @@ describe('public SDK entrypoint', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
     const error = await client
       .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
-        ...baseContext,
         paymentRail: basePaymentRail,
         challenge: {
           protocol: 'x402',

@@ -48,18 +48,39 @@ describe('AgentPayClient', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
     const result = await client.fetchPaid(
       'https://merchant.example.com/data',
       { method: 'GET' },
-      { ...baseContext, paymentRail: basePaymentRail },
+      { paymentRail: basePaymentRail },
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.kind).toBe('passthrough');
     expect(result.protocol).toBe('none');
+  });
+
+  it('propagates merchant fetch transport failures before challenge detection', async () => {
+    const transportError = new TypeError('fetch failed');
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValueOnce(transportError);
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const error = await client
+      .fetchPaid('https://merchant.example.com/unreachable', { method: 'GET' }, {
+        paymentRail: basePaymentRail,
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBe(transportError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns a discriminated success result and hashes the replayable request body', async () => {
@@ -93,6 +114,7 @@ describe('AgentPayClient', () => {
     const client = createAgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
       headers: {
         'x-sdk-header': 'sdk-value',
@@ -108,7 +130,7 @@ describe('AgentPayClient', () => {
         },
         body: '{"hello":"world"}',
       },
-      { ...baseContext, paymentRail: basePaymentRail, challenge: baseChallenge },
+      { paymentRail: basePaymentRail, challenge: baseChallenge },
     );
 
     expect(result.kind).toBe('success');
@@ -163,6 +185,7 @@ describe('AgentPayClient', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'bootstrapKey', bootstrapKey: 'bootstrap-key' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
@@ -198,12 +221,12 @@ describe('AgentPayClient', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
     const error = await client
       .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
-        ...baseContext,
         paymentRail: basePaymentRail,
         challenge: {
           ...baseChallenge,
@@ -223,6 +246,89 @@ describe('AgentPayClient', () => {
     expect(error.kind).toBe('denied');
     expect(error.policyReviewEventId).toBe('00000000-0000-0000-0000-000000000031');
     expect(error.reason).toBe('Policy review required.');
+  });
+
+  it('throws request_failed errors when the control plane rejects the request selectors', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            message: 'Payment rail selector not found.',
+            paymentRail: 'missing-rail',
+          }),
+          {
+            status: 404,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const error = await client
+      .fetchPaid('https://merchant.example.com/data', { method: 'GET' }, {
+        paymentRail: 'missing-rail',
+        challenge: baseChallenge,
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
+    }
+    expect(error.kind).toBe('request_failed');
+    expect(error.reason).toBe('Payment rail selector not found.');
+    expect(error.response.status).toBe(404);
+  });
+
+  it('formats control-plane validation issues into request_failed errors', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            message: 'Invalid SDK payment decision request.',
+            issues: {
+              formErrors: [],
+              fieldErrors: {
+                request: ['Invalid url'],
+              },
+            },
+          }),
+          {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const error = await client
+      .fetchPaid('https://merchant.example.com/data', { method: 'GET' }, {
+        paymentRail: basePaymentRail,
+        challenge: baseChallenge,
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
+    }
+    expect(error.kind).toBe('request_failed');
+    expect(error.reason).toBe(
+      'Invalid SDK payment decision request. request: Invalid url',
+    );
+    expect(error.response.status).toBe(400);
   });
 
   it('throws structured execution failures when the control plane returns non-ok JSON', async () => {
@@ -256,12 +362,12 @@ describe('AgentPayClient', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
     const error = await client
       .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
-        ...baseContext,
         paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
@@ -314,6 +420,7 @@ describe('AgentPayClient', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
@@ -321,7 +428,6 @@ describe('AgentPayClient', () => {
       'https://merchant.example.com/data',
       { method: 'GET' },
       {
-        ...baseContext,
         paymentRail: basePaymentRail,
         challenge: {
           ...baseChallenge,
@@ -390,12 +496,12 @@ describe('AgentPayClient', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
     const error = await client
       .fetchPaid('https://merchant.example.com/data', { method: 'GET' }, {
-        ...baseContext,
         paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
@@ -460,18 +566,19 @@ describe('AgentPayClient', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
     const first = await client.fetchPaid(
       'https://merchant.example.com/replay',
       { method: 'GET' },
-      { ...baseContext, paymentRail: basePaymentRail, challenge: baseChallenge },
+      { paymentRail: basePaymentRail, challenge: baseChallenge },
     );
     const second = await client.fetchPaid(
       'https://merchant.example.com/replay',
       { method: 'GET' },
-      { ...baseContext, paymentRail: basePaymentRail, challenge: baseChallenge },
+      { paymentRail: basePaymentRail, challenge: baseChallenge },
     );
 
     expect(first.kind).toBe('success');
@@ -525,19 +632,18 @@ describe('AgentPayClient', () => {
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
       auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
       fetch: fetchMock,
     });
 
     const executing = await client
       .fetchPaid('https://merchant.example.com/pending', { method: 'GET' }, {
-        ...baseContext,
         paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
     const inconclusive = await client
       .fetchPaid('https://merchant.example.com/inconclusive', { method: 'GET' }, {
-        ...baseContext,
         paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
