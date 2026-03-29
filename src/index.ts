@@ -14,6 +14,10 @@ import {
   type SdkReceipt,
   type SdkReceiptResponse,
 } from './contracts.js';
+import {
+  sdkClientVersion,
+  sdkClientVersionHeaderName,
+} from './version.js';
 
 export type AgentPayAuth =
   | {
@@ -313,6 +317,17 @@ function getControlPlaneErrorMessage(body: unknown, fallback: string) {
   return details.length > 0 ? `${message} ${details.join(' ')}` : message;
 }
 
+async function readControlPlaneError(response: Response, fallback: string) {
+  const responseBody = await response.text();
+  const parsedBody = tryParseJson(responseBody);
+
+  return {
+    responseBody,
+    parsedBody,
+    message: getControlPlaneErrorMessage(parsedBody, fallback),
+  };
+}
+
 function tryParseJson(value: string) {
   if (value.length === 0) {
     return undefined;
@@ -437,7 +452,12 @@ export class AgentPayClient {
     );
 
     if (!response.ok) {
-      throw new Error(`Receipt lookup failed with status ${response.status}.`);
+      const error = await readControlPlaneError(
+        response,
+        `Receipt lookup failed with status ${response.status}.`,
+      );
+
+      throw new Error(error.message);
     }
 
     return sdkReceiptResponseSchema.parse(await response.json());
@@ -698,9 +718,12 @@ export class AgentPayClient {
     );
 
     if (!response.ok) {
-      throw new Error(
+      const error = await readControlPlaneError(
+        response,
         `Runtime token exchange failed with status ${response.status}.`,
       );
+
+      throw new Error(error.message);
     }
 
     const runtimeToken = parseRuntimeTokenResponse(await response.json());
@@ -724,6 +747,7 @@ export class AgentPayClient {
         ...(this.headers ?? {}),
         ...(normalizeHeaders(init.headers) ?? {}),
         Authorization: authorizationHeader,
+        [sdkClientVersionHeaderName]: sdkClientVersion,
       },
     });
   }
@@ -735,3 +759,4 @@ export function createAgentPayClient(options: AgentPayClientOptions) {
 
 export * from './contracts.js';
 export { detectChallengeFromResponse, type DetectedChallenge } from './challenge-detection.js';
+export { sdkClientVersion, sdkClientVersionHeaderName } from './version.js';

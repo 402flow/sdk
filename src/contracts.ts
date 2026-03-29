@@ -25,6 +25,7 @@ export type FulfillmentStatus = z.infer<typeof fulfillmentStatusSchema>;
 export const receiptStatusSchema = z.enum([
   'confirmed',
   'provisional',
+  'expired_unconfirmed',
   'refunded',
   'void',
 ]);
@@ -43,6 +44,27 @@ export type ReceiptReconciliationStatus = z.infer<
 
 export const paymentProofSourceSchema = z.enum(['merchant', 'local_simulation']);
 export type PaymentProofSource = z.infer<typeof paymentProofSourceSchema>;
+
+export const chainAttributionStrengthSchema = z.enum([
+  'strong_request_scoped',
+  'constrained_unique',
+]);
+export type ChainAttributionStrength = z.infer<
+  typeof chainAttributionStrengthSchema
+>;
+
+export const chainConfirmationSourceSchema = z.enum(['chain_observer']);
+export type ChainConfirmationSource = z.infer<
+  typeof chainConfirmationSourceSchema
+>;
+
+export const chainFinalityLevelSchema = z.enum([
+  'evm_block_confirmations_12',
+]);
+export type ChainFinalityLevel = z.infer<typeof chainFinalityLevelSchema>;
+
+export const chainAttributionBasisSchema = z.record(z.unknown());
+export type ChainAttributionBasis = z.infer<typeof chainAttributionBasisSchema>;
 
 export const paidRequestProtocolSchema = z.enum(['x402', 'l402']);
 export type PaidRequestProtocol = z.infer<typeof paidRequestProtocolSchema>;
@@ -219,12 +241,18 @@ export const sdkReceiptSchema = z.object({
   paymentAttemptId: z.string().uuid(),
   organizationId: z.string().uuid(),
   agentId: z.string().uuid(),
-  merchantId: z.string().uuid(),
+  merchantId: z.string().uuid().optional(),
   protocol: paidRequestProtocolSchema,
   money: normalizedMoneySchema,
   authorizationOutcome: receiptAuthorizationOutcomeSchema,
   status: receiptStatusSchema,
   reconciliationStatus: receiptReconciliationStatusSchema,
+  confirmationSource: chainConfirmationSourceSchema.optional(),
+  attributionStrength: chainAttributionStrengthSchema.optional(),
+  attributionBasis: chainAttributionBasisSchema.optional(),
+  attributionRuleVersion: z.string().min(1).max(128).optional(),
+  confirmedAt: z.string().datetime().optional(),
+  finalityLevelUsed: chainFinalityLevelSchema.optional(),
   requestUrl: z.string().url(),
   requestMethod: paidRequestHttpMethodSchema,
   canonicalSettlementKey: z.string().min(1).max(255).optional(),

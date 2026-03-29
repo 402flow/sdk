@@ -4,6 +4,8 @@ import {
   AgentPayClient,
   FetchPaidError,
   createAgentPayClient,
+  sdkClientVersion,
+  sdkClientVersionHeaderName,
 } from './index.js';
 
 const baseContext = {
@@ -144,7 +146,71 @@ describe('AgentPayClient', () => {
     expect(payload.request.bodyHash).toBe(
       '93a23971a914e5eacbf0a8d25154cda309c3c1c72fbb9914d47c60f3cb681588',
     );
+    expect(request?.headers).toMatchObject({
+      [sdkClientVersionHeaderName]: sdkClientVersion,
+    });
     expect(result.receiptId).toBe('00000000-0000-0000-0000-000000000030');
+  });
+
+  it('accepts observed-only receipts that omit merchantId', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'allow',
+            paidRequestId: '00000000-0000-0000-0000-000000000131',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000231',
+            reasonCode: 'policy_allow',
+            reason: 'Allowed.',
+            merchantResponse: {
+              status: 201,
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: '{"ok":true}',
+            },
+            receipt: {
+              receiptId: '00000000-0000-0000-0000-000000000031',
+              paidRequestId: '00000000-0000-0000-0000-000000000131',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000231',
+              organizationId: '00000000-0000-0000-0000-000000000001',
+              agentId: '00000000-0000-0000-0000-000000000002',
+              protocol: 'x402',
+              money: baseMoney,
+              authorizationOutcome: 'allowed',
+              status: 'confirmed',
+              reconciliationStatus: 'none',
+              requestUrl: 'https://www.x402.org/protected',
+              requestMethod: 'GET',
+              createdAt: '2026-03-29T00:00:00.000Z',
+            },
+          }),
+          {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+
+    const client = createAgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const result = await client.fetchPaid(
+      'https://www.x402.org/protected',
+      { method: 'GET' },
+      { paymentRail: basePaymentRail, challenge: baseChallenge },
+    );
+
+    expect(result.kind).toBe('success');
+    if (result.kind !== 'success') {
+      throw new Error(`Unexpected result kind: ${result.kind}`);
+    }
+    expect(result.response.status).toBe(201);
+    expect(result.receipt.merchantId).toBeUndefined();
   });
 
   it('exchanges a bootstrap key for a runtime token and reuses it for subsequent calls', async () => {
@@ -195,10 +261,49 @@ describe('AgentPayClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
       Authorization: 'Bearer bootstrap-key',
+      [sdkClientVersionHeaderName]: sdkClientVersion,
     });
     expect(fetchMock.mock.calls[1]?.[1]?.headers).toMatchObject({
       Authorization: 'Bearer runtime-token',
+      [sdkClientVersionHeaderName]: sdkClientVersion,
     });
+  });
+
+  it('surfaces actionable runtime token exchange errors from the control plane', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            message:
+              'Unsupported SDK version. This control plane requires x-402flow-sdk-version: 0.1.0-alpha.9 and received 0.1.0-alpha.8.',
+            code: 'unsupported_sdk_version',
+            supportedVersions: ['0.1.0-alpha.9'],
+          }),
+          {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'bootstrapKey', bootstrapKey: 'bootstrap-key' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const error = await client
+      .lookupReceipt('00000000-0000-0000-0000-000000000020')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+    expect(error.message).toBe(
+      'Unsupported SDK version. This control plane requires x-402flow-sdk-version: 0.1.0-alpha.9 and received 0.1.0-alpha.8.',
+    );
   });
 
   it('throws policy review denials with the review event id', async () => {

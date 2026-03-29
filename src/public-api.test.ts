@@ -4,6 +4,8 @@ import {
   AgentPayClient,
   FetchPaidError,
   createAgentPayClient,
+  sdkClientVersion,
+  sdkClientVersionHeaderName,
   sdkPaymentDecisionResponseSchema,
   sdkReceiptSchema,
 } from '@402flow/sdk';
@@ -16,6 +18,11 @@ const baseContext = {
 const basePaymentRail = 'synthetic-demo-rail';
 
 describe('public SDK entrypoint', () => {
+  it('exports the SDK client version metadata through the public package import', () => {
+    expect(sdkClientVersionHeaderName).toBe('x-402flow-sdk-version');
+    expect(sdkClientVersion).toBe('0.1.0-alpha.9');
+  });
+
   it('exports receipt finality schemas through the public package import', () => {
     const receipt = sdkReceiptSchema.parse({
       receiptId: '00000000-0000-0000-0000-000000000030',
@@ -23,7 +30,6 @@ describe('public SDK entrypoint', () => {
       paymentAttemptId: '00000000-0000-0000-0000-000000000230',
       organizationId: '00000000-0000-0000-0000-000000000001',
       agentId: '00000000-0000-0000-0000-000000000002',
-      merchantId: '00000000-0000-0000-0000-000000000003',
       protocol: 'x402',
       money: {
         asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
@@ -33,8 +39,17 @@ describe('public SDK entrypoint', () => {
         unit: 'minor',
       },
       authorizationOutcome: 'allowed',
-      status: 'provisional',
-      reconciliationStatus: 'required',
+      status: 'confirmed',
+      reconciliationStatus: 'resolved',
+      confirmationSource: 'chain_observer',
+      attributionStrength: 'constrained_unique',
+      attributionBasis: {
+        transferFingerprint: '0xabc:7',
+        payerAddress: '0x1234',
+      },
+      attributionRuleVersion: 'evm-x402-v1',
+      confirmedAt: '2026-03-10T00:00:01.000Z',
+      finalityLevelUsed: 'evm_block_confirmations_12',
       canonicalSettlementKey: 'merchant-ref:public-parse',
       requestUrl: 'https://merchant.example.com/data',
       requestMethod: 'GET',
@@ -61,7 +76,9 @@ describe('public SDK entrypoint', () => {
     if (decision.outcome !== 'allow') {
       throw new Error('Expected allow decision.');
     }
-    expect(decision.receipt.status).toBe('provisional');
+    expect(decision.receipt.status).toBe('confirmed');
+    expect(decision.receipt.merchantId).toBeUndefined();
+    expect(decision.receipt.confirmationSource).toBe('chain_observer');
     expect(decision.merchantResponse.body).toBe('{"ok":true}');
   });
 
