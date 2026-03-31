@@ -28,6 +28,9 @@ const baseMoney = {
   unit: 'minor' as const,
 };
 
+const unsupportedSdkVersionMessage =
+  'Mocked unsupported SDK version error from the control plane.';
+
 const baseReceipt = {
   receiptId: '00000000-0000-0000-0000-000000000030',
   paidRequestId: '00000000-0000-0000-0000-000000000130',
@@ -274,10 +277,9 @@ describe('AgentPayClient', () => {
       async () =>
         new Response(
           JSON.stringify({
-            message:
-              'Unsupported SDK version. This control plane requires x-402flow-sdk-version: 0.1.0-alpha.9 and received 0.1.0-alpha.8.',
+            message: unsupportedSdkVersionMessage,
             code: 'unsupported_sdk_version',
-            supportedVersions: ['0.1.0-alpha.9'],
+            supportedVersions: ['supported-sdk-version'],
           }),
           {
             status: 400,
@@ -301,9 +303,7 @@ describe('AgentPayClient', () => {
     if (!(error instanceof Error)) {
       throw error;
     }
-    expect(error.message).toBe(
-      'Unsupported SDK version. This control plane requires x-402flow-sdk-version: 0.1.0-alpha.9 and received 0.1.0-alpha.8.',
-    );
+    expect(error.message).toBe(unsupportedSdkVersionMessage);
   });
 
   it('throws policy review denials with the review event id', async () => {
@@ -481,6 +481,57 @@ describe('AgentPayClient', () => {
     expect(error.decision.reasonCode).toBe('merchant_rejected');
   });
 
+  it('throws merchant execution errors separately from merchant rejections', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'execution_failed',
+            paidRequestId: '00000000-0000-0000-0000-000000000141',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000241',
+            reasonCode: 'merchant_execution_failed',
+            reason: 'Merchant returned 500 during paid execution.',
+            merchantResponse: {
+              status: 500,
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: '{"error":"upstream unavailable"}',
+            },
+            evidence: {
+              merchantStatus: 500,
+            },
+          }),
+          {
+            status: 500,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const error = await client
+      .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
+        paymentRail: basePaymentRail,
+        challenge: baseChallenge,
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
+    }
+    expect(error.kind).toBe('execution_failed');
+    expect(error.reason).toBe('Merchant returned 500 during paid execution.');
+    expect(error.decision.reasonCode).toBe('merchant_execution_failed');
+  });
+
   it('returns delivered merchant responses with a provisional receipt on allow outcomes', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
       async () =>
@@ -554,7 +605,7 @@ describe('AgentPayClient', () => {
             outcome: 'paid_fulfillment_failed',
             paidRequestId: '00000000-0000-0000-0000-000000000151',
             paymentAttemptId: '00000000-0000-0000-0000-000000000251',
-            reasonCode: 'merchant_rejected',
+            reasonCode: 'merchant_execution_failed',
             reason: 'Merchant reported fulfillment failure after a paid path was observed.',
             merchantResponse: {
               status: 502,

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import packageJson from '../package.json' with { type: 'json' };
+
 import {
   AgentPayClient,
   FetchPaidError,
@@ -20,7 +22,7 @@ const basePaymentRail = 'synthetic-demo-rail';
 describe('public SDK entrypoint', () => {
   it('exports the SDK client version metadata through the public package import', () => {
     expect(sdkClientVersionHeaderName).toBe('x-402flow-sdk-version');
-    expect(sdkClientVersion).toBe('0.1.0-alpha.9');
+    expect(sdkClientVersion).toBe(packageJson.version);
   });
 
   it('exports receipt finality schemas through the public package import', () => {
