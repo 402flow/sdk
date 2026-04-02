@@ -1,6 +1,6 @@
 {
   "name": "@402flow/sdk",
-  "version": "0.1.0-alpha.10",
+  "version": "0.1.0-alpha.11",
   "description": "Node.js SDK for making paid requests through the 402flow control plane.",
   "private": false,
   "type": "module",

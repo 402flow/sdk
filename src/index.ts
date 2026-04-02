@@ -44,7 +44,6 @@ export type AgentPayClientOptions = {
 };
 
 export type FetchPaidOptions = {
-  paymentRail?: string;
   challenge?: DetectedChallenge;
   idempotencyKey?: string;
 };
@@ -473,7 +472,6 @@ export class AgentPayClient {
     const {
       challenge: _challenge,
       idempotencyKey,
-      paymentRail,
       ...requestContext
     } = request;
 
@@ -494,7 +492,6 @@ export class AgentPayClient {
         headers: challenge.headers,
         ...(challenge.body !== undefined ? { body: challenge.body } : {}),
       },
-      ...(paymentRail ? { paymentRail } : {}),
       idempotencyKey,
     });
   }

@@ -48,7 +48,6 @@ try {
 			}),
 		},
 		{
-			paymentRail: 'base-usdc',
 			description: 'sync daily paid report',
 			idempotencyKey: 'daily-report-2026-03-25',
 		},

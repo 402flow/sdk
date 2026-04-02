@@ -17,8 +17,6 @@ const baseContext = {
   agent: 'synthetic-demo-agent',
 };
 
-const basePaymentRail = 'synthetic-demo-rail';
-
 describe('public SDK entrypoint', () => {
   it('exports the SDK client version metadata through the public package import', () => {
     expect(sdkClientVersionHeaderName).toBe('x-402flow-sdk-version');
@@ -142,7 +140,6 @@ describe('public SDK entrypoint', () => {
       'https://merchant.example.com/data',
       { method: 'GET' },
       {
-        paymentRail: basePaymentRail,
         challenge: {
           protocol: 'x402',
           headers: {},
@@ -183,7 +180,6 @@ describe('public SDK entrypoint', () => {
 
     const error = await client
       .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
         challenge: {
           protocol: 'x402',
           headers: {},

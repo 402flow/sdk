@@ -13,8 +13,6 @@ const baseContext = {
   agent: 'synthetic-demo-agent',
 };
 
-const basePaymentRail = 'synthetic-demo-rail';
-
 const baseChallenge = {
   protocol: 'x402' as const,
   headers: {} as Record<string, string>,
@@ -61,7 +59,7 @@ describe('AgentPayClient', () => {
     const result = await client.fetchPaid(
       'https://merchant.example.com/data',
       { method: 'GET' },
-      { paymentRail: basePaymentRail },
+      {},
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -81,7 +79,6 @@ describe('AgentPayClient', () => {
 
     const error = await client
       .fetchPaid('https://merchant.example.com/unreachable', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
       })
       .catch((caught: unknown) => caught);
 
@@ -136,7 +133,7 @@ describe('AgentPayClient', () => {
         },
         body: '{"hello":"world"}',
       },
-      { paymentRail: basePaymentRail, challenge: baseChallenge },
+      { challenge: baseChallenge },
     );
 
     expect(result.kind).toBe('success');
@@ -205,7 +202,7 @@ describe('AgentPayClient', () => {
     const result = await client.fetchPaid(
       'https://www.x402.org/protected',
       { method: 'GET' },
-      { paymentRail: basePaymentRail, challenge: baseChallenge },
+      { challenge: baseChallenge },
     );
 
     expect(result.kind).toBe('success');
@@ -333,7 +330,6 @@ describe('AgentPayClient', () => {
 
     const error = await client
       .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
@@ -352,8 +348,7 @@ describe('AgentPayClient', () => {
       async () =>
         new Response(
           JSON.stringify({
-            message: 'Payment rail selector not found.',
-            paymentRail: 'missing-rail',
+            message: 'Payment decision request rejected.',
           }),
           {
             status: 404,
@@ -371,7 +366,6 @@ describe('AgentPayClient', () => {
 
     const error = await client
       .fetchPaid('https://merchant.example.com/data', { method: 'GET' }, {
-        paymentRail: 'missing-rail',
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
@@ -381,7 +375,7 @@ describe('AgentPayClient', () => {
       throw error;
     }
     expect(error.kind).toBe('request_failed');
-    expect(error.reason).toBe('Payment rail selector not found.');
+    expect(error.reason).toBe('Payment decision request rejected.');
     expect(error.response.status).toBe(404);
   });
 
@@ -414,7 +408,6 @@ describe('AgentPayClient', () => {
 
     const error = await client
       .fetchPaid('https://merchant.example.com/data', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
@@ -467,7 +460,6 @@ describe('AgentPayClient', () => {
 
     const error = await client
       .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
@@ -518,7 +510,6 @@ describe('AgentPayClient', () => {
 
     const error = await client
       .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
@@ -577,10 +568,7 @@ describe('AgentPayClient', () => {
     const result = await client.fetchPaid(
       'https://merchant.example.com/data',
       { method: 'GET' },
-      {
-        paymentRail: basePaymentRail,
-        challenge: baseChallenge,
-      },
+      { challenge: baseChallenge },
     );
 
     expect(result.kind).toBe('success');
@@ -645,7 +633,6 @@ describe('AgentPayClient', () => {
 
     const error = await client
       .fetchPaid('https://merchant.example.com/data', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
@@ -716,12 +703,12 @@ describe('AgentPayClient', () => {
     const first = await client.fetchPaid(
       'https://merchant.example.com/replay',
       { method: 'GET' },
-      { paymentRail: basePaymentRail, challenge: baseChallenge },
+      { challenge: baseChallenge },
     );
     const second = await client.fetchPaid(
       'https://merchant.example.com/replay',
       { method: 'GET' },
-      { paymentRail: basePaymentRail, challenge: baseChallenge },
+      { challenge: baseChallenge },
     );
 
     expect(first.kind).toBe('success');
@@ -781,13 +768,11 @@ describe('AgentPayClient', () => {
 
     const executing = await client
       .fetchPaid('https://merchant.example.com/pending', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
     const inconclusive = await client
       .fetchPaid('https://merchant.example.com/inconclusive', { method: 'GET' }, {
-        paymentRail: basePaymentRail,
         challenge: baseChallenge,
       })
       .catch((caught: unknown) => caught);
@@ -875,7 +860,7 @@ describe('AgentPayClient', () => {
     const result = await client.fetchPaid(
       'https://merchant.example.com/paid',
       { method: 'GET' },
-      { paymentRail: basePaymentRail },
+      {},
     );
 
     expect(result.kind).toBe('success');
@@ -940,7 +925,7 @@ describe('AgentPayClient', () => {
     const result = await client.fetchPaid(
       'https://merchant.example.com/paid',
       { method: 'GET' },
-      { paymentRail: basePaymentRail },
+      {},
     );
 
     expect(result.kind).toBe('success');
@@ -1003,7 +988,7 @@ describe('AgentPayClient', () => {
     const result = await client.fetchPaid(
       'https://merchant.example.com/paid',
       { method: 'GET' },
-      { paymentRail: basePaymentRail },
+      {},
     );
 
     expect(result.kind).toBe('success');

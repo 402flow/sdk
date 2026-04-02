@@ -206,9 +206,6 @@ export const paidRequestContextSchema = z.object({
 });
 export type PaidRequestContext = z.infer<typeof paidRequestContextSchema>;
 
-export const paidRequestPaymentRailSchema = externalIdSchema;
-export type PaidRequestPaymentRail = z.infer<typeof paidRequestPaymentRailSchema>;
-
 export const paidRequestHttpRequestSchema = z.object({
   url: z.string().url(),
   method: paidRequestHttpMethodSchema,
@@ -229,7 +226,6 @@ export const sdkPaymentDecisionRequestSchema = z.object({
   context: paidRequestContextSchema,
   request: paidRequestHttpRequestSchema,
   challenge: paidRequestChallengeSchema,
-  paymentRail: paidRequestPaymentRailSchema.optional(),
   idempotencyKey: z.string().min(1).max(128).optional(),
 });
 export type SdkPaymentDecisionRequest = z.infer<
