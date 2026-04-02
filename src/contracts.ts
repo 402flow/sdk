@@ -84,16 +84,16 @@ export const paidRequestReasonCodeSchema = z.enum([
   'policy_allow',
   'policy_denied',
   'policy_review_required',
+  'challenge_candidate_malformed',
+  'challenge_no_supported_candidates',
+  'challenge_execution_identity_unavailable',
+  'challenge_execution_identity_ambiguous',
   'payment_execution_in_progress',
   'preflight_incompatible',
   'merchant_rejected',
   'merchant_execution_failed',
   'settlement_proof_conflict',
   'merchant_transport_lost',
-  'payment_rail_missing',
-  'payment_rail_wrong_organization',
-  'payment_rail_disabled',
-  'payment_rail_incompatible',
 ]);
 export type PaidRequestReasonCode = z.infer<typeof paidRequestReasonCodeSchema>;
 

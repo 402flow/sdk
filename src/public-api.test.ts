@@ -194,4 +194,19 @@ describe('public SDK entrypoint', () => {
     expect(error.kind).toBe('denied');
     expect(error.policyReviewEventId).toBe('00000000-0000-0000-0000-000000000031');
   });
+
+  it('parses challenge-selection denial reason codes through the public package import', () => {
+    const decision = sdkPaymentDecisionResponseSchema.parse({
+      outcome: 'deny',
+      paidRequestId: '00000000-0000-0000-0000-000000000132',
+      reasonCode: 'challenge_execution_identity_ambiguous',
+      reason: 'Multiple executable wallets match the resolved supported method.',
+    });
+
+    expect(decision.outcome).toBe('deny');
+    if (decision.outcome !== 'deny') {
+      throw new Error('Expected deny decision.');
+    }
+    expect(decision.reasonCode).toBe('challenge_execution_identity_ambiguous');
+  });
 });
