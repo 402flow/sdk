@@ -82,6 +82,52 @@ describe('public SDK entrypoint', () => {
     expect(decision.merchantResponse.body).toBe('{"ok":true}');
   });
 
+  it('accepts Solana mint addresses in allow decision receipts through the public package import', () => {
+    const decision = sdkPaymentDecisionResponseSchema.parse({
+      outcome: 'allow',
+      paidRequestId: '00000000-0000-0000-0000-000000000131',
+      paymentAttemptId: '00000000-0000-0000-0000-000000000231',
+      reasonCode: 'policy_allow',
+      reason: 'Allowed.',
+      merchantResponse: {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: '{"ok":true}',
+      },
+      receipt: {
+        receiptId: '00000000-0000-0000-0000-000000000031',
+        paidRequestId: '00000000-0000-0000-0000-000000000131',
+        paymentAttemptId: '00000000-0000-0000-0000-000000000231',
+        organizationId: '00000000-0000-0000-0000-000000000001',
+        agentId: '00000000-0000-0000-0000-000000000002',
+        protocol: 'x402',
+        money: {
+          asset: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+          amount: '0.001000',
+          amountMinor: '1000',
+          precision: 6,
+          unit: 'minor',
+        },
+        authorizationOutcome: 'allowed',
+        status: 'provisional',
+        reconciliationStatus: 'none',
+        requestUrl: 'https://merchant.example.com/data',
+        requestMethod: 'GET',
+        createdAt: '2026-03-10T00:00:00.000Z',
+      },
+    });
+
+    expect(decision.outcome).toBe('allow');
+    if (decision.outcome !== 'allow') {
+      throw new Error('Expected allow decision.');
+    }
+    expect(decision.receipt.money.asset).toBe(
+      '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+    );
+  });
+
   it('supports a synthetic-style paid request through the public package import', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
       async () =>

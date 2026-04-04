@@ -100,7 +100,8 @@ export type PaidRequestReasonCode = z.infer<typeof paidRequestReasonCodeSchema>;
 const externalIdPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const decimalAmountPattern = /^\d+(?:\.\d+)?$/;
 const minorUnitAmountPattern = /^\d+$/;
-const currencyCodePattern = /^(?:[A-Z0-9_-]{3,10}|0x[a-fA-F0-9]{40})$/;
+const currencyCodePattern =
+  /^(?:[A-Z0-9_-]{3,10}|0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
 export const defaultMoneyPrecision = 6;
 
 export const externalIdSchema = z
