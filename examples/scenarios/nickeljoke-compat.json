@@ -1,0 +1,6 @@
+{
+  "name": "nickeljoke-compat",
+  "description": "Real public x402 compatibility merchant documented in agent-pay. Requires POST and a control plane configured with the Nickeljoke merchant plus a funded Base Sepolia execution rail.",
+  "targetUrl": "https://nickeljoke.vercel.app/api/joke",
+  "method": "POST"
+}

@@ -1,3 +1,10 @@
+/**
+ * Public wire-contract schemas for @402flow/sdk.
+ *
+ * These schemas serve two roles:
+ * 1. validate control-plane and merchant-facing data at runtime
+ * 2. define the exported TypeScript shapes the SDK exposes to callers
+ */
 import { z } from 'zod';
 
 export const receiptAuthorizationOutcomeSchema = z.enum(['allowed']);
@@ -137,6 +144,11 @@ function formatMonetaryAmount(amount: string, precision: number) {
   return `${wholePart}.${fractionalPart.padEnd(precision, '0')}`;
 }
 
+/**
+ * Convert a decimal amount into minor units using the declared precision.
+ * The SDK uses this when a merchant expresses payment terms in decimal form but
+ * downstream contracts require canonical minor-unit amounts.
+ */
 export function monetaryAmountToMinorUnits(amount: string, precision: number) {
   const normalizedAmount = formatMonetaryAmount(amount, precision);
 
@@ -152,6 +164,7 @@ export function monetaryAmountToMinorUnits(amount: string, precision: number) {
   return minorUnits || '0';
 }
 
+/** Canonical normalized money shape used on receipts and payment requirements. */
 export const normalizedMoneySchema = z
   .object({
     asset: currencyCodeSchema,
@@ -199,6 +212,7 @@ export const normalizedMoneySchema = z
   });
 export type NormalizedMoney = z.infer<typeof normalizedMoneySchema>;
 
+/** Request-scoped context the control plane uses for policy, audit, and identity. */
 export const paidRequestContextSchema = z.object({
   organization: externalIdSchema,
   agent: externalIdSchema,
@@ -207,6 +221,7 @@ export const paidRequestContextSchema = z.object({
 });
 export type PaidRequestContext = z.infer<typeof paidRequestContextSchema>;
 
+/** Exact HTTP request shape that gets prepared, hashed, and later executed. */
 export const paidRequestHttpRequestSchema = z.object({
   url: z.string().url(),
   method: paidRequestHttpMethodSchema,
@@ -216,6 +231,7 @@ export const paidRequestHttpRequestSchema = z.object({
 });
 export type PaidRequestHttpRequest = z.infer<typeof paidRequestHttpRequestSchema>;
 
+/** Merchant challenge evidence captured during prepare or fetchPaid flows. */
 export const paidRequestChallengeSchema = z.object({
   protocol: paidRequestProtocolSchema,
   headers: z.record(z.string()).default({}),
@@ -223,6 +239,213 @@ export const paidRequestChallengeSchema = z.object({
 });
 export type PaidRequestChallenge = z.infer<typeof paidRequestChallengeSchema>;
 
+export const sdkPreparationSourceSchema = z.enum([
+  'marketplace',
+  'provider',
+  'merchant_challenge',
+  'runtime_probe',
+]);
+export type SdkPreparationSource = z.infer<typeof sdkPreparationSourceSchema>;
+
+export const sdkPreparationAuthoritySchema = z.enum([
+  'authoritative',
+  'confirmatory',
+  'advisory',
+]);
+export type SdkPreparationAuthority = z.infer<
+  typeof sdkPreparationAuthoritySchema
+>;
+
+export const sdkPreparationAttributionSchema = z.object({
+  source: sdkPreparationSourceSchema,
+  authority: sdkPreparationAuthoritySchema,
+  note: z.string().min(1).max(400).optional(),
+});
+export type SdkPreparationAttribution = z.infer<
+  typeof sdkPreparationAttributionSchema
+>;
+
+export const sdkPreparationFieldSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  type: z.string().trim().min(1).max(40).optional(),
+  description: z.string().trim().min(1).max(400).optional(),
+  required: z.boolean().optional(),
+  defaultValue: z.unknown().optional(),
+  enumValues: z.array(z.string().trim().min(1)).optional(),
+});
+export type SdkPreparationField = z.infer<typeof sdkPreparationFieldSchema>;
+
+/** Optional caller-supplied metadata used to enrich preparation hints. */
+export const sdkPreparationMetadataSchema = z.object({
+  description: z.string().trim().min(1).max(400).optional(),
+  requestBodyType: z.string().trim().min(1).max(100).optional(),
+  requestBodyExample: z.string().trim().min(1).max(20_000).optional(),
+  requestBodyFields: z.array(sdkPreparationFieldSchema).optional(),
+  requestQueryParams: z.array(sdkPreparationFieldSchema).optional(),
+  requestPathParams: z.array(sdkPreparationFieldSchema).optional(),
+  notes: z.array(z.string().trim().min(1).max(400)).optional(),
+});
+export type SdkPreparationMetadata = z.infer<
+  typeof sdkPreparationMetadataSchema
+>;
+
+/** Optional external metadata channels the SDK knows how to merge. */
+export const sdkPreparationDiscoveryMetadataSchema = z.object({
+  provider: sdkPreparationMetadataSchema.optional(),
+  marketplace: sdkPreparationMetadataSchema.optional(),
+});
+export type SdkPreparationDiscoveryMetadata = z.infer<
+  typeof sdkPreparationDiscoveryMetadataSchema
+>;
+
+export const sdkPreparedHintValueSchema = z.object({
+  value: z.string().min(1),
+  attribution: sdkPreparationAttributionSchema,
+});
+export type SdkPreparedHintValue = z.infer<typeof sdkPreparedHintValueSchema>;
+
+export const sdkPreparedHintFieldSchema = sdkPreparationFieldSchema.extend({
+  attribution: sdkPreparationAttributionSchema,
+});
+export type SdkPreparedHintField = z.infer<typeof sdkPreparedHintFieldSchema>;
+
+/**
+ * Consolidated request-shape hints returned by preparePaidRequest(). Every hint
+ * carries attribution so callers can distinguish advisory metadata from live
+ * merchant-authoritative evidence.
+ */
+export const sdkPreparedRequestHintsSchema = z.object({
+  description: sdkPreparedHintValueSchema.optional(),
+  requestBodyType: sdkPreparedHintValueSchema.optional(),
+  requestBodyExample: sdkPreparedHintValueSchema.optional(),
+  requestBodyFields: z.array(sdkPreparedHintFieldSchema).default([]),
+  requestQueryParams: z.array(sdkPreparedHintFieldSchema).default([]),
+  requestPathParams: z.array(sdkPreparedHintFieldSchema).default([]),
+  notes: z.array(sdkPreparedHintValueSchema).default([]),
+});
+export type SdkPreparedRequestHints = z.infer<
+  typeof sdkPreparedRequestHintsSchema
+>;
+
+export const sdkPreparedPaymentRequirementAmountTypeSchema = z.enum([
+  'exact',
+  'max',
+]);
+export type SdkPreparedPaymentRequirementAmountType = z.infer<
+  typeof sdkPreparedPaymentRequirementAmountTypeSchema
+>;
+
+/** Normalized payment terms extracted from a merchant challenge when available. */
+export const sdkPreparedPaymentRequirementSchema = z.object({
+  protocol: paidRequestProtocolSchema,
+  description: z.string().min(1).optional(),
+  asset: z.string().min(1).optional(),
+  network: z.string().min(1).optional(),
+  payee: z.string().min(1).optional(),
+  amountType: sdkPreparedPaymentRequirementAmountTypeSchema.optional(),
+  amount: monetaryAmountSchema.optional(),
+  amountMinor: z.string().regex(minorUnitAmountPattern).optional(),
+  precision: z.number().int().min(0).max(defaultMoneyPrecision).optional(),
+  provenance: sdkPreparationAttributionSchema,
+  confirmation: sdkPreparationAttributionSchema.optional(),
+});
+export type SdkPreparedPaymentRequirement = z.infer<
+  typeof sdkPreparedPaymentRequirementSchema
+>;
+
+/** Evidence that the SDK performed an unpaid live probe before preparation. */
+export const sdkPreparedProbeResultSchema = z.object({
+  responseStatus: z.number().int().min(100).max(599),
+  confirmedAt: z.string().datetime(),
+});
+export type SdkPreparedProbeResult = z.infer<
+  typeof sdkPreparedProbeResultSchema
+>;
+
+export const sdkPreparedValidationIssueLocationSchema = z.enum([
+  'body',
+  'query',
+  'path',
+  'headers',
+]);
+export type SdkPreparedValidationIssueLocation = z.infer<
+  typeof sdkPreparedValidationIssueLocationSchema
+>;
+
+export const sdkPreparedValidationSeveritySchema = z.enum([
+  'error',
+  'warning',
+]);
+export type SdkPreparedValidationSeverity = z.infer<
+  typeof sdkPreparedValidationSeveritySchema
+>;
+
+/** Structured remediation guidance derived from hints and the candidate request. */
+export const sdkPreparedValidationIssueSchema = z.object({
+  location: sdkPreparedValidationIssueLocationSchema,
+  field: z.string().trim().min(1).max(100),
+  code: z.string().trim().min(1).max(100),
+  message: z.string().trim().min(1).max(400),
+  source: sdkPreparationSourceSchema,
+  blocking: z.boolean(),
+  severity: sdkPreparedValidationSeveritySchema,
+  suggestedFix: z.string().trim().min(1).max(400).optional(),
+});
+export type SdkPreparedValidationIssue = z.infer<
+  typeof sdkPreparedValidationIssueSchema
+>;
+
+/** Narrow action summary the caller should take after preparation. */
+export const sdkPreparedNextActionSchema = z.enum([
+  'execute',
+  'revise_request',
+  'treat_as_passthrough',
+  'manual_review',
+]);
+export type SdkPreparedNextAction = z.infer<
+  typeof sdkPreparedNextActionSchema
+>;
+
+/** Preparation result when this exact request does not currently require payment. */
+export const sdkPreparedPaidRequestPassthroughSchema = z.object({
+  kind: z.literal('passthrough'),
+  protocol: z.literal('none'),
+  request: paidRequestHttpRequestSchema,
+  hints: sdkPreparedRequestHintsSchema,
+  probe: sdkPreparedProbeResultSchema.optional(),
+  validationIssues: z.array(sdkPreparedValidationIssueSchema).default([]),
+  nextAction: sdkPreparedNextActionSchema,
+});
+export type SdkPreparedPaidRequestPassthrough = z.infer<
+  typeof sdkPreparedPaidRequestPassthroughSchema
+>;
+
+/** Preparation result when this exact request is payable and executable. */
+export const sdkPreparedPaidRequestReadySchema = z.object({
+  kind: z.literal('ready'),
+  protocol: paidRequestProtocolSchema,
+  request: paidRequestHttpRequestSchema,
+  challenge: paidRequestChallengeSchema,
+  paymentRequirement: sdkPreparedPaymentRequirementSchema.optional(),
+  hints: sdkPreparedRequestHintsSchema,
+  probe: sdkPreparedProbeResultSchema.optional(),
+  validationIssues: z.array(sdkPreparedValidationIssueSchema).default([]),
+  nextAction: sdkPreparedNextActionSchema,
+});
+export type SdkPreparedPaidRequestReady = z.infer<
+  typeof sdkPreparedPaidRequestReadySchema
+>;
+
+/** Discriminated union returned by AgentPayClient.preparePaidRequest(). */
+export const sdkPreparedPaidRequestSchema = z.discriminatedUnion('kind', [
+  sdkPreparedPaidRequestPassthroughSchema,
+  sdkPreparedPaidRequestReadySchema,
+]);
+export type SdkPreparedPaidRequest = z.infer<
+  typeof sdkPreparedPaidRequestSchema
+>;
+
+/** Control-plane request shape used for governed paid execution decisions. */
 export const sdkPaymentDecisionRequestSchema = z.object({
   context: paidRequestContextSchema,
   request: paidRequestHttpRequestSchema,
@@ -233,6 +456,7 @@ export type SdkPaymentDecisionRequest = z.infer<
   typeof sdkPaymentDecisionRequestSchema
 >;
 
+/** Durable receipt shape returned after the control plane records an outcome. */
 export const sdkReceiptSchema = z.object({
   receiptId: z.string().uuid(),
   paidRequestId: z.string().uuid(),
@@ -265,6 +489,7 @@ export const sdkReceiptSchema = z.object({
 });
 export type SdkReceipt = z.infer<typeof sdkReceiptSchema>;
 
+/** Normalized merchant HTTP response embedded in SDK results and decisions. */
 export const sdkMerchantResponseSchema = z.object({
   status: z.number().int().min(100).max(599),
   headers: z.record(z.string()).default({}),
@@ -344,6 +569,7 @@ export const sdkPaymentDecisionDenyResponseSchema = z.object({
   policyReviewEventId: z.string().uuid().optional(),
 });
 
+/** Full union of decision outcomes the control plane can return to the SDK. */
 export const sdkPaymentDecisionResponseSchema = z.discriminatedUnion('outcome', [
   sdkPaymentDecisionAllowResponseSchema,
   sdkPaymentDecisionPaidFulfillmentFailedResponseSchema,
@@ -357,6 +583,7 @@ export type SdkPaymentDecisionResponse = z.infer<
   typeof sdkPaymentDecisionResponseSchema
 >;
 
+/** Receipt lookup response returned by AgentPayClient.lookupReceipt(). */
 export const sdkReceiptResponseSchema = z.object({
   receipt: sdkReceiptSchema,
 });

@@ -1,0 +1,13 @@
+{
+  "name": "quicknode-solana-devnet-bazaar-revise",
+  "description": "External x402 scenario for QuickNode Solana Devnet RPC that starts with an incomplete JSON-RPC body and relies on merchant challenge schema hints to revise before execute.",
+  "targetUrl": "https://x402.quicknode.com/solana-devnet",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1
+  }
+}

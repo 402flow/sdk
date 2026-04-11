@@ -1,0 +1,6 @@
+{
+  "name": "x402-org-protected-ready",
+  "description": "External x402 compatibility scenario for https://x402.org/protected that is ready to execute without revision.",
+  "targetUrl": "https://x402.org/protected",
+  "method": "GET"
+}

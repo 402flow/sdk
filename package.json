@@ -1,6 +1,6 @@
 {
   "name": "@402flow/sdk",
-  "version": "0.1.0-alpha.13",
+  "version": "0.1.0-alpha.14",
   "description": "Node.js SDK for making paid requests through the 402flow control plane.",
   "private": false,
   "type": "module",
@@ -41,12 +41,13 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run clean && tsc -p tsconfig.json",
     "check": "npm run lint && npm test",
     "clean": "node -e \"const fs = require('node:fs'); for (const path of ['dist', 'tsconfig.tsbuildinfo', 'tsconfig.typecheck.tsbuildinfo']) { fs.rmSync(path, { recursive: true, force: true }); }\"",
+    "example:openai-harness": "npm run build && node examples/openai-agent-harness.mjs",
     "lint": "eslint src vitest.config.ts && npm run typecheck",
-    "pack:check": "npm run clean && npm run build && npm pack --dry-run",
-    "prepack": "npm run clean && npm run build",
+    "pack:check": "npm run build && npm pack --dry-run",
+    "prepack": "npm run build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"

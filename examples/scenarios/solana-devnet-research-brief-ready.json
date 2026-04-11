@@ -1,0 +1,51 @@
+{
+  "name": "solana-devnet-research-brief-ready",
+  "description": "Canonical local agentic scenario against the self-hosted Solana devnet merchant research brief route with a valid shaped body for paid execution.",
+  "targetUrl": "http://127.0.0.1:4123/paid/solana-devnet/research-brief",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "topic": "solana devnet receipt promotion",
+    "audience": "sdk integrator",
+    "format": "bullets"
+  },
+  "discoveryMetadata": {
+    "provider": {
+      "description": "Self-hosted research brief endpoint for the first real local agentic proving path.",
+      "requestBodyType": "json",
+      "requestBodyExample": "{\"topic\":\"solana devnet receipt promotion\",\"audience\":\"sdk integrator\",\"format\":\"bullets\"}",
+      "requestBodyFields": [
+        {
+          "name": "topic",
+          "type": "string",
+          "required": true,
+          "description": "Topic the paid brief should cover."
+        },
+        {
+          "name": "audience",
+          "type": "string",
+          "required": true,
+          "description": "Audience for the brief. Use sdk integrator for the canonical harness run."
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "required": true,
+          "description": "Output format. Use bullets for the canonical harness run."
+        },
+        {
+          "name": "constraints",
+          "type": "string[]",
+          "required": false,
+          "description": "Optional extra constraints as an array of strings."
+        }
+      ],
+      "notes": [
+        "Revise once using the requestBodyExample when validationIssues show missing required fields.",
+        "The paid merchant response echoes the final request body so request shaping is visible in the execution result."
+      ]
+    }
+  }
+}

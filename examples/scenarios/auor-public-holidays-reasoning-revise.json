@@ -1,0 +1,7 @@
+{
+  "name": "auor-public-holidays-reasoning-revise",
+  "description": "Real Auor Public Holidays API scenario where the agent must reason about the correct ISO country code and calendar year from a business context. No discoveryMetadata is provided — all required-param hints come from the merchant x402 challenge schema.",
+  "targetUrl": "https://api.auor.io/open-holidays/v1/public",
+  "method": "GET",
+  "task": "A US-based company is planning a series of events in Germany and needs to avoid scheduling conflicts with national public holidays. Using the Auor Public Holidays API, fetch the official public holidays for Germany for the current calendar year."
+}

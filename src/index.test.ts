@@ -67,6 +67,493 @@ describe('AgentPayClient', () => {
     expect(result.protocol).toBe('none');
   });
 
+  it('prepares a paid request with normalized challenge terms and marketplace-first hints', async () => {
+    const paymentRequired = {
+      x402Version: 2,
+      error: 'Payment required',
+      resource: {
+        url: 'https://merchant.example.com/paid',
+        description: 'Merchant challenge description',
+        mimeType: 'application/json',
+      },
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'eip155:84532',
+          amount: '1000000',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          payTo: '0xmerchant',
+          extra: {
+            precision: 6,
+          },
+        },
+      ],
+    };
+    const paymentRequiredHeader = Buffer.from(
+      JSON.stringify(paymentRequired),
+      'utf8',
+    ).toString('base64');
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response('{}', {
+          status: 402,
+          headers: {
+            'payment-required': paymentRequiredHeader,
+          },
+        }),
+    );
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const prepared = await client.preparePaidRequest(
+      'https://merchant.example.com/paid',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: '{"prompt":"hello"}',
+      },
+      {
+        discoveryMetadata: {
+          marketplace: {
+            description: 'Marketplace description',
+            requestBodyType: 'json',
+            requestBodyFields: [
+              {
+                name: 'prompt',
+                type: 'string',
+                required: true,
+              },
+            ],
+          },
+          provider: {
+            description: 'Provider docs description',
+            requestBodyFields: [
+              {
+                name: 'debug',
+                type: 'boolean',
+              },
+            ],
+            notes: ['Provider-specific note'],
+          },
+        },
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(prepared.kind).toBe('ready');
+    if (prepared.kind !== 'ready') {
+      throw new Error(`Unexpected prepared kind: ${prepared.kind}`);
+    }
+
+    expect(prepared.protocol).toBe('x402');
+    expect(prepared.request.bodyHash).toBe(
+      '8a44725210b9dcd4fefd9f0eca07b70ae45e69274a3105fb25eb426a2cf8bbf4',
+    );
+    expect(prepared.paymentRequirement).toMatchObject({
+      protocol: 'x402',
+      asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      network: 'eip155:84532',
+      payee: '0xmerchant',
+      amountMinor: '1000000',
+      amount: '1.000000',
+      precision: 6,
+      amountType: 'exact',
+      provenance: {
+        source: 'merchant_challenge',
+        authority: 'authoritative',
+      },
+      confirmation: {
+        source: 'runtime_probe',
+        authority: 'confirmatory',
+      },
+    });
+    expect(prepared.hints.description).toEqual({
+      value: 'Marketplace description',
+      attribution: {
+        source: 'marketplace',
+        authority: 'advisory',
+      },
+    });
+    expect(prepared.hints.requestBodyFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'prompt',
+          attribution: {
+            source: 'marketplace',
+            authority: 'advisory',
+          },
+        }),
+        expect.objectContaining({
+          name: 'debug',
+          attribution: {
+            source: 'provider',
+            authority: 'advisory',
+          },
+        }),
+      ]),
+    );
+    expect(prepared.hints.notes).toEqual([
+      {
+        value: 'Provider-specific note',
+        attribution: {
+          source: 'provider',
+          authority: 'advisory',
+        },
+      },
+    ]);
+    expect(prepared.validationIssues).toEqual([]);
+    expect(prepared.nextAction).toBe('execute');
+  });
+
+  it('returns a passthrough preparation result when probing finds no payment challenge', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () => new Response('ok', { status: 200 }),
+    );
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const prepared = await client.preparePaidRequest(
+      'https://merchant.example.com/free',
+      { method: 'GET' },
+    );
+
+    expect(prepared).toMatchObject({
+      kind: 'passthrough',
+      protocol: 'none',
+      probe: {
+        responseStatus: 200,
+      },
+      validationIssues: [],
+      nextAction: 'treat_as_passthrough',
+    });
+  });
+
+  it('derives validation issues and revise_request when required body fields are missing', async () => {
+    const paymentRequired = {
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'eip155:84532',
+          amount: '1000000',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          payTo: '0xmerchant',
+          extra: {
+            precision: 6,
+          },
+        },
+      ],
+    };
+    const paymentRequiredHeader = Buffer.from(
+      JSON.stringify(paymentRequired),
+      'utf8',
+    ).toString('base64');
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response('{}', {
+          status: 402,
+          headers: {
+            'payment-required': paymentRequiredHeader,
+          },
+        }),
+    );
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const prepared = await client.preparePaidRequest(
+      'https://merchant.example.com/paid',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: 'hello',
+        }),
+      },
+      {
+        discoveryMetadata: {
+          provider: {
+            requestBodyType: 'json',
+            requestBodyFields: [
+              {
+                name: 'prompt',
+                type: 'string',
+                required: true,
+              },
+              {
+                name: 'style',
+                type: 'string',
+                required: true,
+              },
+            ],
+          },
+        },
+      },
+    );
+
+    expect(prepared.validationIssues).toEqual([
+      {
+        location: 'body',
+        field: 'style',
+        code: 'missing_required_field',
+        message: 'Required request body field "style" is missing.',
+        source: 'provider',
+        blocking: true,
+        severity: 'error',
+        suggestedFix: 'Add the required body field "style" before execution.',
+      },
+    ]);
+    expect(prepared.nextAction).toBe('revise_request');
+  });
+
+  it('derives required body fields from merchant challenge schema metadata', async () => {
+    const paymentRequired = {
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'eip155:84532',
+          amount: '1000000',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          payTo: '0xmerchant',
+          extra: {
+            precision: 6,
+          },
+        },
+      ],
+      extensions: {
+        bazaar: {
+          info: {
+            input: {
+              type: 'http',
+              method: 'POST',
+              bodyType: 'json',
+              body: {
+                jsonrpc: '2.0',
+                method: 'eth_blockNumber',
+                params: [],
+                id: 1,
+              },
+            },
+          },
+          schema: {
+            type: 'object',
+            properties: {
+              input: {
+                type: 'object',
+                properties: {
+                  type: {
+                    type: 'string',
+                  },
+                  method: {
+                    type: 'string',
+                  },
+                  bodyType: {
+                    type: 'string',
+                    const: 'json',
+                  },
+                  body: {
+                    type: 'object',
+                    properties: {
+                      jsonrpc: {
+                        type: 'string',
+                      },
+                      method: {
+                        type: 'string',
+                      },
+                      params: {
+                        type: 'array',
+                      },
+                      id: {
+                        type: ['number', 'string'],
+                      },
+                    },
+                    required: ['jsonrpc', 'method'],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const paymentRequiredHeader = Buffer.from(
+      JSON.stringify(paymentRequired),
+      'utf8',
+    ).toString('base64');
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response('{}', {
+          status: 402,
+          headers: {
+            'payment-required': paymentRequiredHeader,
+          },
+        }),
+    );
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const prepared = await client.preparePaidRequest(
+      'https://merchant.example.com/paid',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+        }),
+      },
+    );
+
+    expect(prepared.hints.requestBodyType).toEqual({
+      value: 'json',
+      attribution: {
+        source: 'merchant_challenge',
+        authority: 'authoritative',
+      },
+    });
+    expect(prepared.hints.requestBodyFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'jsonrpc',
+          required: true,
+          attribution: {
+            source: 'merchant_challenge',
+            authority: 'authoritative',
+          },
+        }),
+        expect.objectContaining({
+          name: 'method',
+          required: true,
+          attribution: {
+            source: 'merchant_challenge',
+            authority: 'authoritative',
+          },
+        }),
+      ]),
+    );
+    expect(prepared.hints.requestBodyExample).toEqual({
+      value: '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}',
+      attribution: {
+        source: 'merchant_challenge',
+        authority: 'authoritative',
+      },
+    });
+    expect(prepared.validationIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: 'body',
+          field: 'method',
+          code: 'missing_required_field',
+          source: 'merchant_challenge',
+          blocking: true,
+        }),
+      ]),
+    );
+    expect(prepared.nextAction).toBe('revise_request');
+  });
+
+  it('executes a prepared paid request without re-probing the merchant', async () => {
+    const paymentRequired = {
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'eip155:84532',
+          amount: '1000000',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          payTo: '0xmerchant',
+          extra: {
+            precision: 6,
+          },
+        },
+      ],
+    };
+    const paymentRequiredHeader = Buffer.from(
+      JSON.stringify(paymentRequired),
+      'utf8',
+    ).toString('base64');
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () =>
+        new Response('{}', {
+          status: 402,
+          headers: { 'payment-required': paymentRequiredHeader },
+        }),
+      )
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'allow',
+            paidRequestId: '00000000-0000-0000-0000-000000000150',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000250',
+            reasonCode: 'policy_allow',
+            reason: 'Allowed.',
+            merchantResponse: {
+              status: 200,
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: '{"ok":true}',
+            },
+            receipt: {
+              ...baseReceipt,
+              paidRequestId: '00000000-0000-0000-0000-000000000150',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000250',
+            },
+          }),
+          {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      );
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const prepared = await client.preparePaidRequest(
+      'https://merchant.example.com/paid',
+      { method: 'GET' },
+    );
+
+    if (prepared.kind !== 'ready') {
+      throw new Error(`Unexpected prepared kind: ${prepared.kind}`);
+    }
+
+    const result = await client.executePreparedRequest(prepared, {});
+
+    expect(result.kind).toBe('success');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      'http://localhost:3001/api/sdk/payment-decisions',
+    );
+  });
+
   it('propagates merchant fetch transport failures before challenge detection', async () => {
     const transportError = new TypeError('fetch failed');
     const fetchMock = vi.fn<typeof fetch>().mockRejectedValueOnce(transportError);

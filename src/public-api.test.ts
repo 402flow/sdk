@@ -4,6 +4,7 @@ import packageJson from '../package.json' with { type: 'json' };
 
 import {
   AgentPayClient,
+  AgentHarness,
   FetchPaidError,
   createAgentPayClient,
   sdkClientVersion,
@@ -21,6 +22,10 @@ describe('public SDK entrypoint', () => {
   it('exports the SDK client version metadata through the public package import', () => {
     expect(sdkClientVersionHeaderName).toBe('x-402flow-sdk-version');
     expect(sdkClientVersion).toBe(packageJson.version);
+  });
+
+  it('exports the deterministic harness through the public package import', () => {
+    expect(AgentHarness).toBeTypeOf('function');
   });
 
   it('exports receipt finality schemas through the public package import', () => {
@@ -197,6 +202,74 @@ describe('public SDK entrypoint', () => {
     );
 
     expect(result.kind).toBe('success');
+  });
+
+  it('supports preparing a payable request before execution through the public package import', async () => {
+    const paymentRequired = {
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'eip155:84532',
+          amount: '10000',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          payTo: '0xmerchant',
+          extra: {
+            precision: 6,
+          },
+        },
+      ],
+    };
+    const paymentRequiredHeader = Buffer.from(
+      JSON.stringify(paymentRequired),
+      'utf8',
+    ).toString('base64');
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response('{}', {
+          status: 402,
+          headers: {
+            'payment-required': paymentRequiredHeader,
+          },
+        }),
+    );
+    const client = createAgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const prepared = await client.preparePaidRequest(
+      'https://merchant.example.com/data',
+      { method: 'POST', body: '{"prompt":"hello"}' },
+      {
+        discoveryMetadata: {
+          marketplace: {
+            requestBodyFields: [
+              {
+                name: 'prompt',
+                type: 'string',
+                required: true,
+              },
+            ],
+          },
+        },
+      },
+    );
+
+    expect(prepared.kind).toBe('ready');
+    if (prepared.kind !== 'ready') {
+      throw new Error(`Unexpected prepared kind: ${prepared.kind}`);
+    }
+    expect(prepared.paymentRequirement?.provenance.source).toBe(
+      'merchant_challenge',
+    );
+    expect(prepared.hints.requestBodyFields[0]?.attribution.source).toBe(
+      'marketplace',
+    );
+    expect(prepared.validationIssues).toEqual([]);
+    expect(prepared.nextAction).toBe('execute');
   });
 
   it('throws FetchPaidError for denied x402 challenge paths through the public package import', async () => {

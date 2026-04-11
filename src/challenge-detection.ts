@@ -1,11 +1,21 @@
+/**
+ * Detects whether an unpaid merchant response is actually a payable challenge and,
+ * if so, which paid-request protocol it speaks.
+ */
 import type { PaidRequestProtocol } from './contracts.js';
 
+/** Minimal challenge shape the rest of the SDK needs in order to proceed. */
 export type DetectedChallenge = {
   protocol: PaidRequestProtocol;
   headers: Record<string, string>;
   body?: unknown;
 };
 
+/**
+ * Inspect a merchant response for x402/l402 challenge evidence in either headers
+ * or a JSON body. The SDK prefers header evidence first because that is the most
+ * direct live protocol signal.
+ */
 export async function detectChallengeFromResponse(
   response: Response,
 ): Promise<DetectedChallenge | undefined> {
@@ -43,6 +53,8 @@ function captureHeaders(source: Headers): Record<string, string> {
   return headers;
 }
 
+// Header detection is the primary path because a real payable merchant usually
+// signals the protocol directly in response headers.
 function sniffProtocolFromHeaders(
   headers: Record<string, string>,
 ): PaidRequestProtocol | undefined {
@@ -69,6 +81,8 @@ function sniffProtocolFromHeaders(
   return undefined;
 }
 
+// Some compatibility merchants embed the challenge in JSON instead of, or in
+// addition to, headers. This fallback keeps the client tolerant of that shape.
 function sniffProtocolFromBody(
   payload: unknown,
 ): PaidRequestProtocol | undefined {
@@ -98,6 +112,8 @@ function sniffProtocolFromBody(
   return undefined;
 }
 
+// The detector only parses JSON bodies when content-type says JSON, and it never
+// consumes the original response stream thanks to clone().
 async function tryReadJsonBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type') ?? '';
 
