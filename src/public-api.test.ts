@@ -6,11 +6,15 @@ import {
   AgentPayClient,
   AgentHarness,
   FetchPaidError,
+  createFormUrlEncodedBody,
   createAgentPayClient,
+  createJsonRequestBody,
+  isReplayableRequestBody,
   sdkClientVersion,
   sdkClientVersionHeaderName,
   sdkPaymentDecisionResponseSchema,
   sdkReceiptSchema,
+  toReplayableRequestBody,
 } from '@402flow/sdk';
 
 const baseContext = {
@@ -26,6 +30,30 @@ describe('public SDK entrypoint', () => {
 
   it('exports the deterministic harness through the public package import', () => {
     expect(AgentHarness).toBeTypeOf('function');
+  });
+
+  it('exports replayable body helpers through the public package import', () => {
+    expect(createJsonRequestBody({ prompt: 'hello' })).toBe(
+      '{"prompt":"hello"}',
+    );
+
+    const formBody = createFormUrlEncodedBody({
+      prompt: 'hello',
+      attempts: 2,
+      tags: ['alpha', 'beta'],
+      dryRun: false,
+    });
+
+    expect(formBody.toString()).toBe(
+      'prompt=hello&attempts=2&tags=alpha&tags=beta&dryRun=false',
+    );
+    expect(isReplayableRequestBody(formBody)).toBe(true);
+    expect(toReplayableRequestBody(formBody)).toBe(
+      'prompt=hello&attempts=2&tags=alpha&tags=beta&dryRun=false',
+    );
+    expect(() => toReplayableRequestBody(new FormData())).toThrow(
+      /createJsonRequestBody|createFormUrlEncodedBody/,
+    );
   });
 
   it('exports receipt finality schemas through the public package import', () => {
@@ -244,16 +272,14 @@ describe('public SDK entrypoint', () => {
       'https://merchant.example.com/data',
       { method: 'POST', body: '{"prompt":"hello"}' },
       {
-        discoveryMetadata: {
-          marketplace: {
-            requestBodyFields: [
-              {
-                name: 'prompt',
-                type: 'string',
-                required: true,
-              },
-            ],
-          },
+        externalMetadata: {
+          requestBodyFields: [
+            {
+              name: 'prompt',
+              type: 'string',
+              required: true,
+            },
+          ],
         },
       },
     );
@@ -266,7 +292,7 @@ describe('public SDK entrypoint', () => {
       'merchant_challenge',
     );
     expect(prepared.hints.requestBodyFields[0]?.attribution.source).toBe(
-      'marketplace',
+      'external_metadata',
     );
     expect(prepared.validationIssues).toEqual([]);
     expect(prepared.nextAction).toBe('execute');

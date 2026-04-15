@@ -240,16 +240,13 @@ export const paidRequestChallengeSchema = z.object({
 export type PaidRequestChallenge = z.infer<typeof paidRequestChallengeSchema>;
 
 export const sdkPreparationSourceSchema = z.enum([
-  'marketplace',
-  'provider',
   'merchant_challenge',
-  'runtime_probe',
+  'external_metadata',
 ]);
 export type SdkPreparationSource = z.infer<typeof sdkPreparationSourceSchema>;
 
 export const sdkPreparationAuthoritySchema = z.enum([
   'authoritative',
-  'confirmatory',
   'advisory',
 ]);
 export type SdkPreparationAuthority = z.infer<
@@ -276,7 +273,7 @@ export const sdkPreparationFieldSchema = z.object({
 export type SdkPreparationField = z.infer<typeof sdkPreparationFieldSchema>;
 
 /** Optional caller-supplied metadata used to enrich preparation hints. */
-export const sdkPreparationMetadataSchema = z.object({
+export const sdkExternalMetadataSchema = z.object({
   description: z.string().trim().min(1).max(400).optional(),
   requestBodyType: z.string().trim().min(1).max(100).optional(),
   requestBodyExample: z.string().trim().min(1).max(20_000).optional(),
@@ -285,17 +282,8 @@ export const sdkPreparationMetadataSchema = z.object({
   requestPathParams: z.array(sdkPreparationFieldSchema).optional(),
   notes: z.array(z.string().trim().min(1).max(400)).optional(),
 });
-export type SdkPreparationMetadata = z.infer<
-  typeof sdkPreparationMetadataSchema
->;
-
-/** Optional external metadata channels the SDK knows how to merge. */
-export const sdkPreparationDiscoveryMetadataSchema = z.object({
-  provider: sdkPreparationMetadataSchema.optional(),
-  marketplace: sdkPreparationMetadataSchema.optional(),
-});
-export type SdkPreparationDiscoveryMetadata = z.infer<
-  typeof sdkPreparationDiscoveryMetadataSchema
+export type SdkExternalMetadata = z.infer<
+  typeof sdkExternalMetadataSchema
 >;
 
 export const sdkPreparedHintValueSchema = z.object({
@@ -347,7 +335,6 @@ export const sdkPreparedPaymentRequirementSchema = z.object({
   amountMinor: z.string().regex(minorUnitAmountPattern).optional(),
   precision: z.number().int().min(0).max(defaultMoneyPrecision).optional(),
   provenance: sdkPreparationAttributionSchema,
-  confirmation: sdkPreparationAttributionSchema.optional(),
 });
 export type SdkPreparedPaymentRequirement = z.infer<
   typeof sdkPreparedPaymentRequirementSchema

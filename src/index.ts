@@ -18,8 +18,7 @@ import {
   paidRequestHttpRequestSchema,
   sdkPaymentDecisionRequestSchema,
   sdkPaymentDecisionResponseSchema,
-  type SdkPreparationDiscoveryMetadata,
-  type SdkPreparationMetadata,
+  type SdkExternalMetadata,
   type SdkPreparedHintField,
   type SdkPreparedHintValue,
   type SdkPreparedNextAction,
@@ -76,7 +75,7 @@ export type FetchPaidOptions = {
 /** Optional context for the preparation flow. */
 export type PreparePaidRequestOptions = {
   challenge?: DetectedChallenge;
-  discoveryMetadata?: SdkPreparationDiscoveryMetadata;
+  externalMetadata?: SdkExternalMetadata;
 };
 
 /** Execution context accepted when paying a previously prepared request. */
@@ -85,6 +84,9 @@ export type ExecutePreparedRequest = Omit<FetchPaidRequest, 'challenge'>;
 /** Request-scoped control-plane context accepted by fetchPaid(). */
 export type FetchPaidRequest =
   Omit<PaidRequestContext, keyof AgentPayClientIdentity> & FetchPaidOptions;
+
+/** Body types the SDK can safely replay through paid prepare/execute flows. */
+export type ReplayableRequestBody = string | URLSearchParams;
 
 type PaidProtocol = DetectedChallenge['protocol'];
 type DenyDecision = Extract<SdkPaymentDecisionResponse, { outcome: 'deny' }>;
@@ -388,9 +390,39 @@ function tryParseJson(value: string) {
   }
 }
 
-// Preparation and paid execution may need to replay the exact request body, so
-// only body types that can be losslessly serialized are accepted here.
-function getReplayableRequestBody(body: RequestInit['body']) {
+function describeRequestBodyType(body: RequestInit['body']) {
+  if (body === undefined || body === null) {
+    return 'empty';
+  }
+
+  if (typeof body === 'string') {
+    return 'string';
+  }
+
+  if (body instanceof URLSearchParams) {
+    return 'URLSearchParams';
+  }
+
+  if (typeof body === 'object' && 'constructor' in body) {
+    const constructorName = body.constructor?.name;
+
+    if (typeof constructorName === 'string' && constructorName.length > 0) {
+      return constructorName;
+    }
+  }
+
+  return typeof body;
+}
+
+/** Returns true when a request body can be replayed exactly across paid flows. */
+export function isReplayableRequestBody(
+  body: RequestInit['body'],
+): body is ReplayableRequestBody {
+  return typeof body === 'string' || body instanceof URLSearchParams;
+}
+
+/** Serialize a paid-flow request body into the exact replayable wire representation. */
+export function toReplayableRequestBody(body: RequestInit['body']) {
   if (body === undefined || body === null) {
     return undefined;
   }
@@ -404,8 +436,46 @@ function getReplayableRequestBody(body: RequestInit['body']) {
   }
 
   throw new Error(
-    'Paid requests currently support replayable string and URLSearchParams bodies when routed through the control plane.',
+    `Paid requests require replayable string or URLSearchParams bodies. Received ${describeRequestBodyType(body)}. Convert JSON payloads with createJsonRequestBody(...) or form payloads with createFormUrlEncodedBody(...).`,
   );
+}
+
+/** Helper for callers that want an explicit JSON-string body for paid flows. */
+export function createJsonRequestBody(payload: unknown) {
+  return JSON.stringify(payload);
+}
+
+type FormUrlEncodedValue = string | number | boolean;
+type FormUrlEncodedBodyInit = Record<
+  string,
+  FormUrlEncodedValue | readonly FormUrlEncodedValue[]
+>;
+
+/** Helper for callers that want a replayable form body for paid flows. */
+export function createFormUrlEncodedBody(
+  values: FormUrlEncodedBodyInit,
+): URLSearchParams {
+  const params = new URLSearchParams();
+
+  for (const [key, rawValue] of Object.entries(values)) {
+    if (Array.isArray(rawValue)) {
+      for (const entry of rawValue) {
+        params.append(key, String(entry));
+      }
+
+      continue;
+    }
+
+    params.append(key, String(rawValue));
+  }
+
+  return params;
+}
+
+// Preparation and paid execution may need to replay the exact request body, so
+// only body types that can be losslessly serialized are accepted here.
+function getReplayableRequestBody(body: RequestInit['body']) {
+  return toReplayableRequestBody(body);
 }
 
 function hashRequestBody(body: string | undefined) {
@@ -451,8 +521,8 @@ function createPreparedHttpRequest(input: string, init: RequestInit) {
 }
 
 function createPreparationAttribution(
-  source: 'marketplace' | 'provider' | 'merchant_challenge' | 'runtime_probe',
-  authority: 'authoritative' | 'confirmatory' | 'advisory',
+  source: 'merchant_challenge' | 'external_metadata',
+  authority: 'authoritative' | 'advisory',
   note?: string,
 ) {
   return {
@@ -462,11 +532,10 @@ function createPreparationAttribution(
   } as const;
 }
 
-function readDiscoveryMetadata(
+function readExternalMetadata(
   options: PreparePaidRequestOptions,
-  source: 'marketplace' | 'provider',
-): SdkPreparationMetadata | undefined {
-  return options.discoveryMetadata?.[source];
+): SdkExternalMetadata | undefined {
+  return options.externalMetadata;
 }
 
 function readSchemaType(value: unknown) {
@@ -489,7 +558,7 @@ function readSchemaType(value: unknown) {
 
 function readMerchantFieldsFromObjectSchema(
   objectSchema: Record<string, unknown>,
-): NonNullable<SdkPreparationMetadata['requestBodyFields']> {
+) : NonNullable<SdkExternalMetadata['requestBodyFields']> {
   const properties = isRecord(objectSchema.properties)
     ? objectSchema.properties
     : undefined;
@@ -500,7 +569,7 @@ function readMerchantFieldsFromObjectSchema(
         ),
       )
     : new Set<string>();
-  const fields = new Map<string, NonNullable<SdkPreparationMetadata['requestBodyFields']>[number]>();
+  const fields = new Map<string, NonNullable<SdkExternalMetadata['requestBodyFields']>[number]>();
 
   for (const [name, schema] of Object.entries(properties ?? {})) {
     const propertySchema = isRecord(schema) ? schema : {};
@@ -551,7 +620,7 @@ function inferFieldTypeFromValue(value: unknown) {
 
 function inferFieldsFromQueryParamExample(
   queryParams: Record<string, unknown>,
-): NonNullable<SdkPreparationMetadata['requestQueryParams']> {
+): NonNullable<SdkExternalMetadata['requestQueryParams']> {
   return Object.entries(queryParams).map(([name, value]) => ({
     name,
     ...(inferFieldTypeFromValue(value) ? { type: inferFieldTypeFromValue(value) } : {}),
@@ -592,7 +661,7 @@ async function readMerchantPreparationMetadataFromInputSchema(
   requestBodyExample: string | undefined,
   queryParamExample: Record<string, unknown> | undefined,
   fetchImpl: typeof fetch,
-): Promise<SdkPreparationMetadata | undefined> {
+): Promise<SdkExternalMetadata | undefined> {
   const bodyType = readStringValue(inputSchema.bodyType)
     ?? (isRecord(inputSchema.properties)
       && isRecord(inputSchema.properties.bodyType)
@@ -645,7 +714,7 @@ async function readMerchantPreparationMetadataFromInputSchema(
 async function readMerchantPreparationMetadata(
   challenge: DetectedChallenge | undefined,
   fetchImpl: typeof fetch,
-): Promise<SdkPreparationMetadata | undefined> {
+): Promise<SdkExternalMetadata | undefined> {
   if (!challenge) {
     return undefined;
   }
@@ -713,31 +782,22 @@ async function readMerchantPreparationMetadata(
 
 function pickPreparedHintValue(
   options: PreparePaidRequestOptions,
-  merchantChallengeMetadata: SdkPreparationMetadata | undefined,
+  merchantChallengeMetadata: SdkExternalMetadata | undefined,
   key: 'description' | 'requestBodyType' | 'requestBodyExample',
 ): SdkPreparedHintValue | undefined {
-  const marketplaceMetadata = readDiscoveryMetadata(options, 'marketplace');
-
-  if (marketplaceMetadata?.[key]) {
-    return {
-      value: marketplaceMetadata[key],
-      attribution: createPreparationAttribution('marketplace', 'advisory'),
-    };
-  }
-
-  const providerMetadata = readDiscoveryMetadata(options, 'provider');
-
-  if (providerMetadata?.[key]) {
-    return {
-      value: providerMetadata[key],
-      attribution: createPreparationAttribution('provider', 'advisory'),
-    };
-  }
-
   if (merchantChallengeMetadata?.[key]) {
     return {
       value: merchantChallengeMetadata[key],
       attribution: createPreparationAttribution('merchant_challenge', 'authoritative'),
+    };
+  }
+
+  const externalMetadata = readExternalMetadata(options);
+
+  if (externalMetadata?.[key]) {
+    return {
+      value: externalMetadata[key],
+      attribution: createPreparationAttribution('external_metadata', 'advisory'),
     };
   }
 
@@ -746,7 +806,7 @@ function pickPreparedHintValue(
 
 function mergePreparedHintFields(
   options: PreparePaidRequestOptions,
-  merchantChallengeMetadata: SdkPreparationMetadata | undefined,
+  merchantChallengeMetadata: SdkExternalMetadata | undefined,
   key: 'requestBodyFields' | 'requestQueryParams' | 'requestPathParams',
 ) {
   const fields = new Map<string, SdkPreparedHintField>();
@@ -758,16 +818,17 @@ function mergePreparedHintFields(
     });
   }
 
-  for (const [source, metadata] of [
-    ['provider', readDiscoveryMetadata(options, 'provider')],
-    ['marketplace', readDiscoveryMetadata(options, 'marketplace')],
-  ] as const) {
-    for (const field of metadata?.[key] ?? []) {
-      fields.set(field.name.toLowerCase(), {
-        ...field,
-        attribution: createPreparationAttribution(source, 'advisory'),
-      });
+  for (const field of readExternalMetadata(options)?.[key] ?? []) {
+    const normalizedName = field.name.toLowerCase();
+
+    if (fields.has(normalizedName)) {
+      continue;
     }
+
+    fields.set(normalizedName, {
+        ...field,
+        attribution: createPreparationAttribution('external_metadata', 'advisory'),
+      });
   }
 
   return Array.from(fields.values());
@@ -781,6 +842,7 @@ async function buildPreparedRequestHints(
   // Hint assembly merges optional caller metadata with merchant-authoritative
   // challenge metadata while preserving attribution for every returned field.
   const merchantChallengeMetadata = await readMerchantPreparationMetadata(challenge, fetchImpl);
+  const externalMetadata = readExternalMetadata(options);
 
   return {
     ...(pickPreparedHintValue(options, merchantChallengeMetadata, 'description')
@@ -830,13 +892,9 @@ async function buildPreparedRequestHints(
         value,
         attribution: createPreparationAttribution('merchant_challenge', 'authoritative'),
       })),
-      ...(readDiscoveryMetadata(options, 'marketplace')?.notes ?? []).map((value) => ({
+      ...(externalMetadata?.notes ?? []).map((value) => ({
         value,
-        attribution: createPreparationAttribution('marketplace', 'advisory'),
-      })),
-      ...(readDiscoveryMetadata(options, 'provider')?.notes ?? []).map((value) => ({
-        value,
-        attribution: createPreparationAttribution('provider', 'advisory'),
+        attribution: createPreparationAttribution('external_metadata', 'advisory'),
       })),
     ],
   };
@@ -888,7 +946,7 @@ function buildPreparedValidationIssues(
       code: 'unsupported_content_type',
       message:
         'Request body is expected to be JSON but content-type is not application/json.',
-      source: hints.requestBodyType?.attribution.source ?? 'provider',
+      source: hints.requestBodyType?.attribution.source ?? 'external_metadata',
       blocking: true,
       severity: 'error',
       suggestedFix: 'Send the request with content-type: application/json.',
@@ -922,7 +980,7 @@ function buildPreparedValidationIssues(
           source:
             hints.requestBodyType?.attribution.source
             ?? hints.requestBodyFields[0]?.attribution.source
-            ?? 'provider',
+            ?? 'external_metadata',
           blocking: true,
           severity: 'error',
           suggestedFix:
@@ -938,7 +996,7 @@ function buildPreparedValidationIssues(
           source:
             hints.requestBodyFields[0]?.attribution.source
             ?? hints.requestBodyType?.attribution.source
-            ?? 'provider',
+            ?? 'external_metadata',
           blocking: true,
           severity: 'error',
           suggestedFix:
@@ -1137,7 +1195,6 @@ function parseAuthenticateHeaderParameters(header: string | undefined) {
 
 function buildPreparedPaymentRequirement(
   challenge: DetectedChallenge,
-  confirmedByProbe: boolean,
 ): SdkPreparedPaymentRequirement | undefined {
   // Payment terms are normalized into one portable structure so callers do not
   // need protocol-specific parsing logic in their agent or application layer.
@@ -1145,13 +1202,6 @@ function buildPreparedPaymentRequirement(
     'merchant_challenge',
     'authoritative',
   );
-  const confirmation = confirmedByProbe
-    ? createPreparationAttribution(
-        'runtime_probe',
-        'confirmatory',
-        'Confirmed by an unpaid probe before execution.',
-      )
-    : undefined;
   const paymentRequiredPayload = tryParsePaymentRequiredHeader(
     challenge.headers['payment-required'],
   );
@@ -1197,7 +1247,6 @@ function buildPreparedPaymentRequirement(
         ...(amountMinor ? { amountMinor } : {}),
         ...(precision !== undefined ? { precision } : {}),
         provenance,
-        ...(confirmation ? { confirmation } : {}),
       };
     }
   }
@@ -1232,14 +1281,12 @@ function buildPreparedPaymentRequirement(
       ...(precision !== undefined ? { precision } : {}),
       ...(amount ? { amountType: 'exact' as const } : {}),
       provenance,
-      ...(confirmation ? { confirmation } : {}),
     };
   }
 
   return {
     protocol: challenge.protocol,
     provenance,
-    ...(confirmation ? { confirmation } : {}),
   };
 }
 
@@ -1289,12 +1336,9 @@ export class AgentPayClient {
         protocol: options.challenge.protocol,
         request,
         challenge: paidRequestChallengeSchema.parse(options.challenge),
-        ...(buildPreparedPaymentRequirement(options.challenge, false)
+        ...(buildPreparedPaymentRequirement(options.challenge)
           ? {
-              paymentRequirement: buildPreparedPaymentRequirement(
-                options.challenge,
-                false,
-              ),
+              paymentRequirement: buildPreparedPaymentRequirement(options.challenge),
             }
           : {}),
         hints,
@@ -1329,8 +1373,8 @@ export class AgentPayClient {
       protocol: challenge.protocol,
       request,
       challenge: paidRequestChallengeSchema.parse(challenge),
-      ...(buildPreparedPaymentRequirement(challenge, true)
-        ? { paymentRequirement: buildPreparedPaymentRequirement(challenge, true) }
+      ...(buildPreparedPaymentRequirement(challenge)
+        ? { paymentRequirement: buildPreparedPaymentRequirement(challenge) }
         : {}),
       hints,
       probe,

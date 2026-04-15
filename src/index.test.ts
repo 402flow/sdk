@@ -67,7 +67,7 @@ describe('AgentPayClient', () => {
     expect(result.protocol).toBe('none');
   });
 
-  it('prepares a paid request with normalized challenge terms and marketplace-first hints', async () => {
+  it('prepares a paid request with normalized challenge terms and external metadata hints', async () => {
     const paymentRequired = {
       x402Version: 2,
       error: 'Payment required',
@@ -119,28 +119,21 @@ describe('AgentPayClient', () => {
         body: '{"prompt":"hello"}',
       },
       {
-        discoveryMetadata: {
-          marketplace: {
-            description: 'Marketplace description',
-            requestBodyType: 'json',
-            requestBodyFields: [
-              {
-                name: 'prompt',
-                type: 'string',
-                required: true,
-              },
-            ],
-          },
-          provider: {
-            description: 'Provider docs description',
-            requestBodyFields: [
-              {
-                name: 'debug',
-                type: 'boolean',
-              },
-            ],
-            notes: ['Provider-specific note'],
-          },
+        externalMetadata: {
+          description: 'External metadata description',
+          requestBodyType: 'json',
+          requestBodyFields: [
+            {
+              name: 'prompt',
+              type: 'string',
+              required: true,
+            },
+            {
+              name: 'debug',
+              type: 'boolean',
+            },
+          ],
+          notes: ['External metadata note'],
         },
       },
     );
@@ -168,15 +161,11 @@ describe('AgentPayClient', () => {
         source: 'merchant_challenge',
         authority: 'authoritative',
       },
-      confirmation: {
-        source: 'runtime_probe',
-        authority: 'confirmatory',
-      },
     });
     expect(prepared.hints.description).toEqual({
-      value: 'Marketplace description',
+      value: 'External metadata description',
       attribution: {
-        source: 'marketplace',
+        source: 'external_metadata',
         authority: 'advisory',
       },
     });
@@ -185,14 +174,14 @@ describe('AgentPayClient', () => {
         expect.objectContaining({
           name: 'prompt',
           attribution: {
-            source: 'marketplace',
+            source: 'external_metadata',
             authority: 'advisory',
           },
         }),
         expect.objectContaining({
           name: 'debug',
           attribution: {
-            source: 'provider',
+            source: 'external_metadata',
             authority: 'advisory',
           },
         }),
@@ -200,9 +189,9 @@ describe('AgentPayClient', () => {
     );
     expect(prepared.hints.notes).toEqual([
       {
-        value: 'Provider-specific note',
+        value: 'External metadata note',
         attribution: {
-          source: 'provider',
+          source: 'external_metadata',
           authority: 'advisory',
         },
       },
@@ -286,22 +275,20 @@ describe('AgentPayClient', () => {
         }),
       },
       {
-        discoveryMetadata: {
-          provider: {
-            requestBodyType: 'json',
-            requestBodyFields: [
-              {
-                name: 'prompt',
-                type: 'string',
-                required: true,
-              },
-              {
-                name: 'style',
-                type: 'string',
-                required: true,
-              },
-            ],
-          },
+        externalMetadata: {
+          requestBodyType: 'json',
+          requestBodyFields: [
+            {
+              name: 'prompt',
+              type: 'string',
+              required: true,
+            },
+            {
+              name: 'style',
+              type: 'string',
+              required: true,
+            },
+          ],
         },
       },
     );
@@ -312,13 +299,131 @@ describe('AgentPayClient', () => {
         field: 'style',
         code: 'missing_required_field',
         message: 'Required request body field "style" is missing.',
-        source: 'provider',
+        source: 'external_metadata',
         blocking: true,
         severity: 'error',
         suggestedFix: 'Add the required body field "style" before execution.',
       },
     ]);
     expect(prepared.nextAction).toBe('revise_request');
+  });
+
+  it('prefers merchant challenge hints over overlapping external metadata', async () => {
+    const paymentRequired = {
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'eip155:84532',
+          amount: '1000000',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          payTo: '0xmerchant',
+          extra: {
+            precision: 6,
+          },
+        },
+      ],
+      extensions: {
+        bazaar: {
+          schema: {
+            type: 'object',
+            properties: {
+              input: {
+                type: 'object',
+                properties: {
+                  bodyType: { const: 'json' },
+                  body: {
+                    type: 'object',
+                    properties: {
+                      prompt: {
+                        type: 'string',
+                        description: 'Merchant prompt field.',
+                      },
+                    },
+                    required: ['prompt'],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const paymentRequiredHeader = Buffer.from(
+      JSON.stringify(paymentRequired),
+      'utf8',
+    ).toString('base64');
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response('{}', {
+          status: 402,
+          headers: {
+            'payment-required': paymentRequiredHeader,
+          },
+        }),
+    );
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const prepared = await client.preparePaidRequest(
+      'https://merchant.example.com/paid',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: '{"prompt":"hello"}',
+      },
+      {
+        externalMetadata: {
+          requestBodyType: 'text',
+          requestBodyFields: [
+            {
+              name: 'prompt',
+              type: 'boolean',
+              description: 'External prompt field.',
+            },
+            {
+              name: 'style',
+              type: 'string',
+              required: true,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(prepared.hints.requestBodyType).toEqual({
+      value: 'json',
+      attribution: {
+        source: 'merchant_challenge',
+        authority: 'authoritative',
+      },
+    });
+    expect(prepared.hints.requestBodyFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'prompt',
+          type: 'string',
+          description: 'Merchant prompt field.',
+          attribution: {
+            source: 'merchant_challenge',
+            authority: 'authoritative',
+          },
+        }),
+        expect.objectContaining({
+          name: 'style',
+          attribution: {
+            source: 'external_metadata',
+            authority: 'advisory',
+          },
+        }),
+      ]),
+    );
   });
 
   it('derives required body fields from merchant challenge schema metadata', async () => {

@@ -124,23 +124,21 @@ describe('AgentHarness', () => {
         'content-type': 'application/json',
       },
       body: '{"prompt":"hello"}',
-      discoveryMetadata: {
-        marketplace: {
-          requestBodyFields: [
-            {
-              name: 'prompt',
-              type: 'string',
-              required: true,
-            },
-          ],
-          requestQueryParams: [
-            {
-              name: 'style',
-              type: 'string',
-              required: true,
-            },
-          ],
-        },
+      externalMetadata: {
+        requestBodyFields: [
+          {
+            name: 'prompt',
+            type: 'string',
+            required: true,
+          },
+        ],
+        requestQueryParams: [
+          {
+            name: 'style',
+            type: 'string',
+            required: true,
+          },
+        ],
       },
     });
 
@@ -428,21 +426,19 @@ describe('AgentHarness', () => {
         'content-type': 'application/json',
       },
       body: '{"prompt":"hello"}',
-      discoveryMetadata: {
-        provider: {
-          requestBodyFields: [
-            {
-              name: 'prompt',
-              type: 'string',
-              required: true,
-            },
-            {
-              name: 'style',
-              type: 'string',
-              required: true,
-            },
-          ],
-        },
+      externalMetadata: {
+        requestBodyFields: [
+          {
+            name: 'prompt',
+            type: 'string',
+            required: true,
+          },
+          {
+            name: 'style',
+            type: 'string',
+            required: true,
+          },
+        ],
       },
     });
 
@@ -452,6 +448,7 @@ describe('AgentHarness', () => {
         location: 'body',
         field: 'style',
         code: 'missing_required_field',
+        source: 'external_metadata',
         blocking: true,
       }),
     ]);

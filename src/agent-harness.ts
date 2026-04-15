@@ -29,7 +29,7 @@ import { randomUUID } from 'node:crypto';
 
 import type {
   PaidRequestChallenge,
-  SdkPreparationDiscoveryMetadata,
+  SdkExternalMetadata,
   SdkMerchantResponse,
   SdkPreparedNextAction,
   SdkPreparedPaidRequest,
@@ -85,7 +85,7 @@ export type AgentHarnessPrepareInput = {
   method?: string;
   headers?: Record<string, string>;
   body?: string;
-  discoveryMetadata?: SdkPreparationDiscoveryMetadata;
+  externalMetadata?: SdkExternalMetadata;
 };
 
 /** Host-facing input for the harness execute step. */
@@ -402,8 +402,8 @@ export class AgentHarness {
         ...(input.body !== undefined ? { body: input.body } : {}),
       },
       {
-        ...(input.discoveryMetadata
-          ? { discoveryMetadata: input.discoveryMetadata }
+        ...(input.externalMetadata
+          ? { externalMetadata: input.externalMetadata }
           : {}),
       },
     );

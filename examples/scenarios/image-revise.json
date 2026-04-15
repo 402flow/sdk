@@ -9,20 +9,18 @@
   "body": {
     "prompt": "foggy coastline"
   },
-  "discoveryMetadata": {
-    "provider": {
-      "requestBodyFields": [
-        {
-          "name": "prompt",
-          "type": "string",
-          "required": true
-        },
-        {
-          "name": "style",
-          "type": "string",
-          "required": true
-        }
-      ]
-    }
+  "externalMetadata": {
+    "requestBodyFields": [
+      {
+        "name": "prompt",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "style",
+        "type": "string",
+        "required": true
+      }
+    ]
   }
 }

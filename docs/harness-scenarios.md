@@ -9,7 +9,7 @@ Current named scenarios:
 1. `image-ready`: paid image generation request that is already executable without revision
 2. `image-revise`: paid image generation request that should trigger `revise_request` until the `style` field is added
 3. `nickeljoke-compat`: public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, with `POST` as part of the contract
-4. `nickeljoke-reasoning-revise`: Nickeljoke scenario that starts incomplete and relies on provider metadata for one revision
+4. `nickeljoke-reasoning-revise`: Nickeljoke scenario that starts incomplete and relies on external metadata for one revision
 5. `auor-public-holidays-reasoning-revise`: GET scenario that derives required query params from merchant hints
 6. `quicknode-solana-devnet-bazaar-revise`: external x402 scenario for `https://x402.quicknode.com/solana-devnet` that starts with an incomplete JSON-RPC body and relies on merchant challenge hints for revision
 7. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the self-hosted Solana devnet merchant research brief route with a complete shaped body ready for execution

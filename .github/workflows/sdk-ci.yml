@@ -8,7 +8,14 @@ on:
 
 jobs:
   validate:
+    name: Validate on Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 20
+          - 22
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install dependencies
@@ -24,6 +31,9 @@ jobs:
 
       - name: Validate source tree
         run: npm run check
+
+      - name: Verify package can build and dry pack
+        run: npm run pack:check
 
       - name: Pack SDK artifact
         run: |
@@ -39,9 +49,10 @@ jobs:
           cd "$TMP_DIR"
           npm init -y >/dev/null 2>&1
           npm install "/home/runner/work/sdk/sdk/artifacts/$TARBALL" >/dev/null 2>&1
-          node --input-type=module -e "const sdk = await import('@402flow/sdk'); if (!sdk.AgentPayClient || !sdk.createAgentPayClient) { throw new Error('Packed artifact missing expected root exports.'); }"
+          node --input-type=module -e "const sdk = await import('@402flow/sdk'); if (!sdk.AgentPayClient || !sdk.createAgentPayClient || !sdk.createJsonRequestBody) { throw new Error('Packed artifact missing expected root exports.'); }"
 
       - name: Upload packed artifact
+        if: ${{ matrix.node-version == 22 }}
         uses: actions/upload-artifact@v4
         with:
           name: sdk-package

@@ -96,8 +96,8 @@ export function loadOpenAiHarnessScenario(filePath) {
     ...(parsedValue.method ? { method: parsedValue.method } : {}),
     ...(parsedValue.headers ? { headers: parsedValue.headers } : {}),
     ...(parsedValue.body !== undefined ? { body: parsedValue.body } : {}),
-    ...(parsedValue.discoveryMetadata !== undefined
-      ? { discoveryMetadata: parsedValue.discoveryMetadata }
+    ...(parsedValue.externalMetadata !== undefined
+      ? { externalMetadata: parsedValue.externalMetadata }
       : {}),
   };
 }

@@ -1,6 +1,8 @@
 # @402flow/sdk
 
-Node.js SDK for making governed paid HTTP requests through the 402flow control plane.
+Paid HTTP SDK for AI agents with an inspectable prepare/execute flow.
+
+It uses the 402flow control plane as the governance and execution backend, but the main developer surface is a small client for preparing and executing paid HTTP requests.
 
 ## Install
 
@@ -8,9 +10,11 @@ Node.js SDK for making governed paid HTTP requests through the 402flow control p
 npm install @402flow/sdk
 ```
 
+The published package supports Node 20+.
+
 ## Overview
 
-`@402flow/sdk` is built for AI agents and other callers that need to check, prepare, and execute paid HTTP requests without embedding control-plane or protocol-specific logic in the host.
+`@402flow/sdk` is built for AI agents and other callers that need to inspect, prepare, and execute paid HTTP requests without embedding payment-protocol or governance logic in the host.
 
 The SDK has one core client, `AgentPayClient`, and three main calls:
 
@@ -25,16 +29,46 @@ Use `preparePaidRequest(...)` plus `executePreparedRequest(...)` when the caller
 
 The package also includes `AgentHarness`, an optional preparedId-based wrapper for tool hosts. It is a convenience layer on top of `AgentPayClient`, not part of the core client API.
 
+## Runtime Notes
+
+Two constraints matter early in real integrations:
+
+1. paid prepare and execute flows require replayable request bodies
+2. the current replayable body types are `string` and `URLSearchParams`
+
+That means JSON payloads should be sent as strings, and form-style payloads should be sent as `URLSearchParams`.
+
+The SDK exports small helpers for that:
+
+```ts
+import {
+  createFormUrlEncodedBody,
+  createJsonRequestBody,
+} from '@402flow/sdk';
+
+const jsonBody = createJsonRequestBody({
+  prompt: 'foggy coastline',
+});
+
+const formBody = createFormUrlEncodedBody({
+  prompt: 'foggy coastline',
+  style: 'noir',
+  tags: ['coast', 'mist'],
+});
+```
+
+`FormData`, `Blob`, streams, and framework-specific body wrappers are not currently accepted in paid flows because the SDK has to replay the exact request body through preparation and execution. Convert those upstream into a stable string or `URLSearchParams` first.
+
 ## Create A Client
 
-Create one `AgentPayClient` per agent identity. The client binds the organization and agent selectors up front, and each request only carries request-specific context.
+Create one `AgentPayClient` per agent identity. The client binds the 402flow control-plane location and the organization plus agent selectors up front, and each request only carries request-specific context.
 
 ### Bootstrap key
 
 For most SDK integrations, bootstrap-key auth is the recommended mode. The SDK exchanges it for a short-lived runtime token, caches that token, and refreshes it automatically before expiry.
 
 ```ts
-import { AgentPayClient } from '@402flow/sdk';
+import { AgentPayClient, createJsonRequestBody } from '@402flow/sdk';
 
 const client = new AgentPayClient({
   controlPlaneBaseUrl: 'https://402flow.ai',
@@ -76,7 +110,7 @@ try {
       headers: {
         'content-type': 'application/json',
       },
-      body: JSON.stringify({
+      body: createJsonRequestBody({
         date: '2026-03-25',
       }),
     },
@@ -101,6 +135,8 @@ If the merchant does not require payment for that exact request, the SDK returns
 Use `preparePaidRequest()` when the caller needs a first-class pre-execution result before paying.
 
 ```ts
+import { createJsonRequestBody } from '@402flow/sdk';
+
 const prepared = await client.preparePaidRequest(
   'https://merchant.example.com/images/generate',
   {
@@ -108,7 +144,7 @@ const prepared = await client.preparePaidRequest(
     headers: {
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
+    body: createJsonRequestBody({
       prompt: 'foggy coastline',
     }),
   },
@@ -130,7 +166,7 @@ This flow is useful when:
 
 1. an agent needs request-shape hints before attempting execution
 2. the caller wants normalized payment terms before paying
-3. the caller wants to merge optional `discoveryMetadata` it already has from another system
+3. the caller wants to merge optional `externalMetadata` it already has from another system
 
 The common loop is:
 
@@ -142,6 +178,8 @@ The common loop is:
 If your system already has endpoint metadata, you can pass it in as optional context:
 
 ```ts
+import { createJsonRequestBody } from '@402flow/sdk';
+
 const prepared = await client.preparePaidRequest(
   'https://merchant.example.com/images/generate',
   {
@@ -149,28 +187,26 @@ const prepared = await client.preparePaidRequest(
     headers: {
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
+    body: createJsonRequestBody({
       prompt: 'foggy coastline',
     }),
   },
   {
-    discoveryMetadata: {
-      provider: {
-        requestBodyType: 'json',
-        requestBodyFields: [
-          {
-            name: 'prompt',
-            type: 'string',
-            required: true,
-          },
-        ],
-      },
+    externalMetadata: {
+      requestBodyType: 'json',
+      requestBodyFields: [
+        {
+          name: 'prompt',
+          type: 'string',
+          required: true,
+        },
+      ],
     },
   },
 );
 ```
 
-`discoveryMetadata` is optional caller context. It improves preparation when the caller already has structured endpoint knowledge, but it is not required for normal SDK use.
+`externalMetadata` is optional caller context. It improves preparation when the caller already has structured endpoint knowledge, but it is not required for normal SDK use.
 
 ### What `ready` Means
 
@@ -187,6 +223,8 @@ That distinction matters:
 If preparation returns `kind === 'ready'`, execute that exact prepared request with `executePreparedRequest(prepared, ...)`.
 
 ```ts
+import { createJsonRequestBody } from '@402flow/sdk';
+
 const prepared = await client.preparePaidRequest(
   'https://merchant.example.com/images/generate',
   {
@@ -194,7 +232,7 @@ const prepared = await client.preparePaidRequest(
     headers: {
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
+    body: createJsonRequestBody({
       prompt: 'foggy coastline',
     }),
   },
@@ -224,6 +262,8 @@ The preparation result distinguishes four important things:
 4. `nextAction`: a narrow action summary such as `execute`, `revise_request`, or `treat_as_passthrough`
 
 Each prepared hint carries `attribution` so callers can distinguish live merchant-authoritative data from advisory caller-supplied metadata.
+
+In this model, payment terms come from the merchant challenge, optional request-shape enrichment comes from `externalMetadata`, and live confirmation is represented by the prepared `probe` result.
 
 ## Result And Error Semantics
 
@@ -265,13 +305,40 @@ Most agent frameworks only need a small orchestration policy:
 ```text
 When using @402flow/sdk:
 - Always prepare a paid request before executing it.
-- If preparation returns revise_request, inspect validationIssues and hints, revise the request, and prepare again.
-- Do not invent discoveryMetadata unless the caller already has it from another system.
-- Use merchant-challenge hints to understand request shape, but use the task and available business context to choose actual parameter values.
-- Execute only after preparation shows the request is ready.
+- Execute only when preparation returns nextAction as execute.
+- If preparation returns treat_as_passthrough, do not pay and explain that paid execution is not required.
+- If preparation returns revise_request, use validationIssues and hints to revise only when the task provides enough information; otherwise stop and explain what is still missing.
+- Use externalMetadata only when the caller already has it from another system, and treat it as advisory when merchant-challenge hints disagree.
+- Do not invent missing business parameters or execute the same prepared request twice unless the caller explicitly asks for a retry.
+- After execution, read the stored execution result and report denied, pending, failed, or inconclusive outcomes clearly.
 ```
 
 That is the portable core SDK story. It should work across OpenAI, Claude, LangGraph, MCP, or custom workflows without requiring host-specific packaging in the SDK contract itself.
+
+## Tiny OpenAI Tools Host
+
+If you want a minimal real host integration instead of the larger evaluation harness, use the tiny OpenAI Responses example in `examples/openai-tools-quickstart.mjs`.
+
+It keeps the host story narrow:
+
+1. create an `AgentPayClient`
+2. wrap it with optional `AgentHarness` so tool calls can pass `preparedId`
+3. expose `prepare_paid_request`, `execute_prepared_request`, and `get_execution_result`
+
+Run it with one prompt:
+
+```bash
+export OPENAI_API_KEY="..."
+export X402FLOW_CONTROL_PLANE_BASE_URL="https://402flow.ai"
+export X402FLOW_ORGANIZATION="acme-labs"
+export X402FLOW_AGENT="reporting-worker"
+export X402FLOW_BOOTSTRAP_KEY="..."
+
+npm run example:openai-tools-quickstart -- \
+  "Prepare and execute a paid POST request to https://merchant.example.com/images/generate with JSON body {\"prompt\":\"foggy coastline\"}"
+```
+
+Use this when you want the shortest real host integration path. Use the full evaluation harness only when you need scenarios, transcripts, or repeated eval runs.
 
 ## Optional `AgentHarness`
 

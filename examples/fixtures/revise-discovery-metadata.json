@@ -1,16 +1,14 @@
 {
-  "provider": {
-    "requestBodyFields": [
-      {
-        "name": "prompt",
-        "type": "string",
-        "required": true
-      },
-      {
-        "name": "style",
-        "type": "string",
-        "required": true
-      }
-    ]
-  }
+  "requestBodyFields": [
+    {
+      "name": "prompt",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "style",
+      "type": "string",
+      "required": true
+    }
+  ]
 }

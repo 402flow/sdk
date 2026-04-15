@@ -1,6 +1,8 @@
-# Evaluation Harness
+# Evaluation Runner on AgentHarness
 
-This document covers the optional evaluation harness that sits on top of `AgentHarness`.
+This document covers the optional evaluation runner built on top of `AgentHarness`.
+
+It does not describe a second SDK module named `evaluation-harness`. The reusable SDK wrapper is `AgentHarness` in `src/agent-harness.ts`; this document is about the example runner and its supporting files under `examples/`.
 
 It is not the core SDK contract. The core package surface remains:
 
@@ -9,7 +11,11 @@ It is not the core SDK contract. The core package surface remains:
 3. `executePreparedRequest(...)`
 4. `fetchPaid(...)`
 
-Use the harness when you want a preparedId-based tool surface for a model host, especially the repo-local OpenAI Responses example under `examples/openai-agent-harness.mjs`.
+Use the harness when you want a preparedId-based tool surface for a model host, especially the repo-local OpenAI Responses examples under `examples/openai-tools-quickstart.mjs` and `examples/openai-agent-harness.mjs`.
+
+That means the host stores the full prepared request state and gives the model a small opaque `preparedId` instead of asking it to carry the entire prepared object across turns. Later tool calls use that `preparedId` to execute the prepared request or read back the stored result.
+
+This matters for tool-calling hosts because passing a short stable id between turns is usually easier, safer, and cheaper than expecting the model to preserve a larger structured prepared request exactly. If your application can safely hold the prepared object itself, use the core SDK directly instead of `AgentHarness`.
 
 ## Boundary
 
@@ -17,7 +23,7 @@ The boundary is:
 
 1. core SDK: `AgentPayClient`, `preparePaidRequest(...)`, `executePreparedRequest(...)`, and the preparation and result contracts
 2. optional portable wrapper: `AgentHarness`, which turns that flow into a preparedId-based tool contract
-3. example-only runner: the OpenAI script plus its prompt and scenario scaffolding under `examples/`
+3. example-only runners: the tiny OpenAI quickstart plus the larger evaluation script and scenario scaffolding under `examples/`
 
 The harness is intentionally narrow. It does not add a provider abstraction layer.
 
@@ -41,13 +47,15 @@ The OpenAI example exposes exactly three model-callable tools:
 2. `execute_prepared_request`
 3. `get_execution_result`
 
-The intended flow is:
+The intended host policy is:
 
-1. prepare a request
-2. inspect `nextAction` and `validationIssues`
-3. revise if needed
-4. execute only when the prepared request is ready
-5. read the stored execution result before giving a final summary
+1. always prepare a request before any paid execution
+2. execute only when preparation returns `nextAction: execute`
+3. if preparation returns `treat_as_passthrough`, do not pay and explain that paid execution is not required
+4. if preparation returns `revise_request`, use `validationIssues` and hints to revise only when the task provides enough information; otherwise stop and explain what is still missing
+5. use `externalMetadata` only when the caller already has endpoint metadata, and treat it as advisory when merchant challenge hints disagree
+6. do not invent missing business parameters or execute the same prepared request twice unless the caller explicitly asks for a retry
+7. after execution, read the stored execution result and report denied, pending, failed, or inconclusive outcomes clearly
 
 ## Environment
 
@@ -65,7 +73,13 @@ Runtime-token auth also works if you set `X402FLOW_RUNTIME_TOKEN` instead of `X4
 
 ## Basic Run
 
-Run the example with a direct prompt:
+For the smallest runnable host example:
+
+```bash
+npm run example:openai-tools-quickstart -- --help
+```
+
+For the larger evaluation runner, use a direct prompt:
 
 ```bash
 npm run example:openai-harness -- --prompt "Prepare and execute a paid POST request to https://merchant.example.com/images/generate with JSON body {\"prompt\":\"foggy coastline\"}"
@@ -98,7 +112,7 @@ The runner rejects using `--prompt` and `--preset` together.
 
 Built-in prompt presets:
 
-1. `ready-json-post`: prepare and execute a JSON POST request using inline JSON or JSON fixture files for body, headers, and optional discovery metadata
+1. `ready-json-post`: prepare and execute a JSON POST request using inline JSON or JSON fixture files for body, headers, and optional external metadata
 2. `revise-json-post`: prepare a JSON POST request, revise once if validation issues require it, then execute only after the revised request is ready
 3. `revise-get-query`: start with a bare GET URL, derive required query params from preparation hints, revise once, then execute
 4. `inspect-only`: prepare once and stop after summarizing `nextAction` and `validationIssues`
@@ -110,7 +124,7 @@ Supported preset inputs include:
 1. `AGENT_HARNESS_TARGET_URL`
 2. `AGENT_HARNESS_HEADERS_JSON` or `AGENT_HARNESS_HEADERS_FILE`
 3. `AGENT_HARNESS_BODY_JSON` or `AGENT_HARNESS_BODY_FILE`
-4. `AGENT_HARNESS_DISCOVERY_METADATA_JSON` or `AGENT_HARNESS_DISCOVERY_METADATA_FILE`
+4. `AGENT_HARNESS_EXTERNAL_METADATA_JSON` or `AGENT_HARNESS_EXTERNAL_METADATA_FILE`
 5. `AGENT_HARNESS_TASK` for some reasoning-oriented scenarios
 
 ## Transcripts
