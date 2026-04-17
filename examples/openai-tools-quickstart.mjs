@@ -16,7 +16,7 @@ function printHelp() {
   console.log(`Minimal OpenAI tools quickstart for @402flow/sdk
 
 Usage:
-  npm run example:openai-tools-quickstart -- "Prepare and execute a paid POST request to https://merchant.example.com/images/generate with JSON body {\"prompt\":\"foggy coastline\"}"
+  npm run example:openai-tools-quickstart -- "Prepare and execute a paid POST request to https://nickeljoke.vercel.app/api/joke with JSON body {\"topic\":\"sdk integration\",\"tone\":\"dry\",\"audience\":\"platform engineers\"}"
 
 Required environment:
   OPENAI_API_KEY

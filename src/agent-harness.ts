@@ -31,6 +31,7 @@ import type {
   PaidRequestChallenge,
   SdkExternalMetadata,
   SdkMerchantResponse,
+  SdkPreparedChallengeDetails,
   SdkPreparedNextAction,
   SdkPreparedPaidRequest,
   SdkPreparedPaidRequestReady,
@@ -115,6 +116,7 @@ export type AgentHarnessPreparedSummary = {
   state: 'active';
   kind: SdkPreparedPaidRequest['kind'];
   protocol: SdkPreparedPaidRequest['protocol'];
+  challengeDetails?: SdkPreparedChallengeDetails;
   paymentRequirement?: SdkPreparedPaymentRequirement;
   hints: SdkPreparedRequestHints;
   probe?: SdkPreparedPaidRequest['probe'];
@@ -285,6 +287,9 @@ function summarizePreparedRecord(
     state: 'active' as const,
     kind: record.prepared.kind,
     protocol: record.prepared.protocol,
+    ...(record.prepared.kind === 'ready' && record.prepared.challengeDetails
+      ? { challengeDetails: record.prepared.challengeDetails }
+      : {}),
     ...(record.prepared.kind === 'ready' && record.prepared.paymentRequirement
       ? { paymentRequirement: record.prepared.paymentRequirement }
       : {}),

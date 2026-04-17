@@ -323,6 +323,49 @@ export type SdkPreparedPaymentRequirementAmountType = z.infer<
   typeof sdkPreparedPaymentRequirementAmountTypeSchema
 >;
 
+/** Parsed x402 challenge resource details surfaced for host and agent inspection. */
+export const sdkPreparedChallengeResourceSchema = z.object({
+  url: z.string().min(1),
+  description: z.string().min(1).optional(),
+  mimeType: z.string().min(1).optional(),
+});
+export type SdkPreparedChallengeResource = z.infer<
+  typeof sdkPreparedChallengeResourceSchema
+>;
+
+/** One advertised payment candidate copied from the decoded merchant challenge. */
+export const sdkPreparedChallengeAcceptSchema = z
+  .object({
+    scheme: z.string().min(1).optional(),
+    network: z.string().min(1).optional(),
+    amount: z.string().min(1).optional(),
+    maxAmountRequired: z.string().min(1).optional(),
+    asset: z.string().min(1).optional(),
+    payTo: z.string().min(1).optional(),
+    maxTimeoutSeconds: z.number().int().positive().optional(),
+    resource: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    mimeType: z.string().min(1).optional(),
+    outputSchema: z.unknown().optional(),
+    extra: z.record(z.unknown()).optional(),
+  })
+  .catchall(z.unknown());
+export type SdkPreparedChallengeAccept = z.infer<
+  typeof sdkPreparedChallengeAcceptSchema
+>;
+
+/** Parsed merchant challenge payload for agents that need full spec-level detail. */
+export const sdkPreparedChallengeDetailsSchema = z.object({
+  x402Version: z.number().int().positive().optional(),
+  error: z.string().min(1).optional(),
+  resource: sdkPreparedChallengeResourceSchema.optional(),
+  accepts: z.array(sdkPreparedChallengeAcceptSchema).default([]),
+  extensions: z.record(z.unknown()).optional(),
+});
+export type SdkPreparedChallengeDetails = z.infer<
+  typeof sdkPreparedChallengeDetailsSchema
+>;
+
 /** Normalized payment terms extracted from a merchant challenge when available. */
 export const sdkPreparedPaymentRequirementSchema = z.object({
   protocol: paidRequestProtocolSchema,
@@ -413,6 +456,7 @@ export const sdkPreparedPaidRequestReadySchema = z.object({
   protocol: paidRequestProtocolSchema,
   request: paidRequestHttpRequestSchema,
   challenge: paidRequestChallengeSchema,
+  challengeDetails: sdkPreparedChallengeDetailsSchema.optional(),
   paymentRequirement: sdkPreparedPaymentRequirementSchema.optional(),
   hints: sdkPreparedRequestHintsSchema,
   probe: sdkPreparedProbeResultSchema.optional(),

@@ -1,3 +1,5 @@
+import './load-env.mjs';
+
 import { AgentPayClient } from '../dist/index.js';
 
 export const defaultModel = process.env.OPENAI_MODEL ?? 'gpt-5.4';
@@ -8,7 +10,7 @@ const defaultToolDefinitions = [
     type: 'function',
     name: 'prepare_paid_request',
     description:
-      'Prepare a candidate paid HTTP request and inspect payment terms, hints, and nextAction before execution.',
+      'Prepare a candidate paid HTTP request and inspect payment terms, parsed challenge details, request hints, and nextAction before execution.',
     strict: false,
     parameters: {
       type: 'object',
@@ -59,9 +61,10 @@ const defaultToolDefinitions = [
 export const defaultInstructions = [
   'Safely orchestrate paid HTTP requests through 402flow.',
   'Always call prepare_paid_request before any paid execution.',
+  'Inspect challengeDetails when present for merchant resource metadata, advertised payment candidates, and extension-published discovery data.',
   'Only call execute_prepared_request when preparation returns nextAction as execute.',
   'If preparation returns nextAction as treat_as_passthrough, do not pay and explain that paid execution is not required.',
-  'If preparation returns nextAction as revise_request, use validationIssues and hints to revise only when the task provides enough information; otherwise stop and explain what is still missing.',
+  'If preparation returns nextAction as revise_request, use validationIssues, hints, and challengeDetails.extensions when present to revise only when the task provides enough information; otherwise stop and explain what is still missing.',
   'Use externalMetadata only when the caller already has endpoint metadata, and treat it as advisory when merchant challenge hints disagree.',
   'Do not invent missing business parameters or execute the same prepared request twice unless the caller explicitly asks for a retry.',
   'After execution, call get_execution_result before your final summary and report denied, pending, failed, or inconclusive outcomes clearly.',
@@ -147,6 +150,25 @@ function isStringRecord(value) {
   return Object.values(value).every((entry) => typeof entry === 'string');
 }
 
+function hasContentTypeHeader(headers) {
+  return Object.keys(headers).some((key) => key.toLowerCase() === 'content-type');
+}
+
+function looksLikeJsonBody(body) {
+  const trimmed = body.trim();
+
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
+    return false;
+  }
+
+  try {
+    JSON.parse(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function validatePreparationField(value) {
   return (
     isPlainObject(value)
@@ -218,6 +240,87 @@ function validatePrepareArgs(args) {
   return null;
 }
 
+function recoverNestedPrepareArgs(args) {
+  if (!isPlainObject(args) || typeof args.body !== 'string') {
+    return args;
+  }
+
+  let parsedBody;
+
+  try {
+    parsedBody = JSON.parse(args.body);
+  } catch {
+    return args;
+  }
+
+  if (!isPlainObject(parsedBody)) {
+    return args;
+  }
+
+  const hasNestedEnvelope = (
+    'headers' in parsedBody
+    || 'externalMetadata' in parsedBody
+    || ('body' in parsedBody && isPlainObject(parsedBody.body))
+  );
+
+  if (!hasNestedEnvelope) {
+    return args;
+  }
+
+  const recoveredArgs = {
+    ...args,
+    ...(args.headers === undefined && isStringRecord(parsedBody.headers)
+      ? { headers: parsedBody.headers }
+      : {}),
+    ...(args.externalMetadata === undefined && validateExternalMetadata(parsedBody.externalMetadata)
+      ? { externalMetadata: parsedBody.externalMetadata }
+      : {}),
+  };
+
+  if (typeof parsedBody.body === 'string') {
+    return {
+      ...recoveredArgs,
+      body: parsedBody.body,
+    };
+  }
+
+  if (isPlainObject(parsedBody.body) || Array.isArray(parsedBody.body)) {
+    return {
+      ...recoveredArgs,
+      body: JSON.stringify(parsedBody.body),
+    };
+  }
+
+  return recoveredArgs;
+}
+
+function inferJsonContentType(args) {
+  if (!isPlainObject(args) || typeof args.body !== 'string' || !looksLikeJsonBody(args.body)) {
+    return args;
+  }
+
+  if (args.headers === undefined) {
+    return {
+      ...args,
+      headers: {
+        'content-type': 'application/json',
+      },
+    };
+  }
+
+  if (!isStringRecord(args.headers) || hasContentTypeHeader(args.headers)) {
+    return args;
+  }
+
+  return {
+    ...args,
+    headers: {
+      ...args.headers,
+      'content-type': 'application/json',
+    },
+  };
+}
+
 function validatePreparedIdArgs(toolName, args) {
   if (!isPlainObject(args)) {
     return createToolError('invalid_arguments', `${toolName} expects an object.`);
@@ -233,13 +336,14 @@ function validatePreparedIdArgs(toolName, args) {
 export function createToolHandlers(harness) {
   return {
     async prepare_paid_request(args) {
-      const validationError = validatePrepareArgs(args);
+      const normalizedArgs = inferJsonContentType(recoverNestedPrepareArgs(args));
+      const validationError = validatePrepareArgs(normalizedArgs);
 
       if (validationError) {
         return validationError;
       }
 
-      return harness.preparePaidRequest(args);
+      return harness.preparePaidRequest(normalizedArgs);
     },
 
     async execute_prepared_request(args) {

@@ -59,7 +59,15 @@ The intended host policy is:
 
 ## Environment
 
-The example runner expects:
+Create a repo-local SDK env file first:
+
+```bash
+cp .env.example .env
+```
+
+The example runner loads `.env.local` and `.env` from the SDK root, then keeps any already-exported shell environment values.
+
+The expected SDK environment values are:
 
 ```bash
 export OPENAI_API_KEY="..."
@@ -70,6 +78,8 @@ export X402FLOW_BOOTSTRAP_KEY="..."
 ```
 
 Runtime-token auth also works if you set `X402FLOW_RUNTIME_TOKEN` instead of `X402FLOW_BOOTSTRAP_KEY`.
+
+That keeps the evaluation runner self-contained in the SDK repo. The control plane can still be local `agent-pay`, but the SDK examples no longer depend on reading another repository's env file.
 
 ## Basic Run
 
@@ -82,7 +92,7 @@ npm run example:openai-tools-quickstart -- --help
 For the larger evaluation runner, use a direct prompt:
 
 ```bash
-npm run example:openai-harness -- --prompt "Prepare and execute a paid POST request to https://merchant.example.com/images/generate with JSON body {\"prompt\":\"foggy coastline\"}"
+npm run example:openai-harness -- --prompt "Prepare and execute a paid POST request to https://nickeljoke.vercel.app/api/joke with JSON body {\"topic\":\"sdk integration\",\"tone\":\"dry\",\"audience\":\"platform engineers\"}"
 ```
 
 You can also use a named preset and scenario:
@@ -90,7 +100,7 @@ You can also use a named preset and scenario:
 ```bash
 npm run example:openai-harness -- \
   --preset ready-json-post \
-  --scenario image-ready
+  --scenario nickeljoke-compat
 ```
 
 ## Flags

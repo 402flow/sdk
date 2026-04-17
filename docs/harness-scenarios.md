@@ -4,31 +4,37 @@ This document collects the example harness scenarios, recommended preset pairing
 
 ## Named Scenario Fixture Packs
 
+Before running SDK examples or scenario sweeps from this repo, create `.env` from `.env.example` in the SDK root. The scenario runner loads SDK-local dotenv files directly.
+
+To rerun the full stable scenario set and replace any older artifacts in `tmp/` with only the newest results, use:
+
+```bash
+npm run scenario:all
+```
+
+That command clears `tmp/`, rebuilds the SDK, reruns the full scenario plan, and writes only the newest logs, transcripts, and semantic summary back under `tmp/`.
+
+Shell-exported values still win when you need to temporarily point the SDK at a different control plane or auth context.
+
 Current named scenarios:
 
-1. `image-ready`: paid image generation request that is already executable without revision
-2. `image-revise`: paid image generation request that should trigger `revise_request` until the `style` field is added
-3. `nickeljoke-compat`: public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, with `POST` as part of the contract
-4. `nickeljoke-reasoning-revise`: Nickeljoke scenario that starts incomplete and relies on external metadata for one revision
-5. `auor-public-holidays-reasoning-revise`: GET scenario that derives required query params from merchant hints
-6. `quicknode-solana-devnet-bazaar-revise`: external x402 scenario for `https://x402.quicknode.com/solana-devnet` that starts with an incomplete JSON-RPC body and relies on merchant challenge hints for revision
-7. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the self-hosted Solana devnet merchant research brief route with a complete shaped body ready for execution
-8. `solana-devnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete to exercise revision
-9. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
+1. `nickeljoke-compat`: public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, with `POST` as part of the contract
+2. `auor-public-holidays-reasoning-revise`: GET scenario that derives required query params from merchant hints
+3. `solana-devnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana devnet merchant research brief route
+4. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+5. `solana-devnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+6. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
 
 ## Recommended Preset Pairings
 
 Recommended pairings:
 
-1. `image-ready` -> `ready-json-post`
-2. `image-revise` -> `revise-json-post`
-3. `nickeljoke-compat` -> `ready-json-post`
-4. `nickeljoke-reasoning-revise` -> `revise-json-post`
-5. `auor-public-holidays-reasoning-revise` -> `revise-get-query`
-6. `quicknode-solana-devnet-bazaar-revise` -> `revise-json-post`
-7. `solana-devnet-research-brief-ready` -> `ready-json-post`
-8. `solana-devnet-research-brief-revise` -> `revise-json-post`
-9. `x402-org-protected-ready` -> `ready-json-post`
+1. `nickeljoke-compat` -> `ready-json-post`
+2. `auor-public-holidays-reasoning-revise` -> `revise-get-query`
+3. `solana-devnet-research-brief-bazaar-revise` -> `revise-json-post`
+4. `solana-devnet-research-brief-ready` -> `ready-json-post`
+5. `solana-devnet-research-brief-revise` -> `revise-json-post`
+6. `x402-org-protected-ready` -> `ready-json-post`
 
 ## Canonical Local Agentic Path
 
@@ -64,12 +70,14 @@ npm run example:openai-harness -- \
   --transcript-file ./tmp/solana-devnet-research-brief-revise-run.json
 ```
 
+Run the scenario sweep from the SDK repo itself. Keep SDK scenario setup and credentials in this repo's `.env` so the examples can point at local `agent-pay` or future public demo merchants without a control-plane wrapper.
+
 Expected outcomes:
 
-1. `prepare_paid_request` may return `nextAction: revise_request` when preparation emits `validationIssues`
-2. if no `validationIssues` are emitted, preparation can still return `nextAction: execute` even with an incomplete task-specific body
-3. in that case, merchant-side validation may still reject paid execution with `422`
-4. `get_execution_result` still returns the deterministic stored result for the prepared request
+1. `prepare_paid_request` should return `nextAction: revise_request` when merchant-published Bazaar metadata shows required request body fields are missing
+2. after one revision, the scenario should prepare as `execute`
+3. paid execution should return a deterministic JSON body that echoes the accepted brief input and output sections
+4. `get_execution_result` should return the same stored result after execution
 
 The same readiness rule applies here as everywhere else:
 

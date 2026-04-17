@@ -1,6 +1,6 @@
 {
   "name": "@402flow/sdk",
-  "version": "0.1.0-alpha.15",
+  "version": "0.1.0-alpha.16",
   "description": "Paid HTTP SDK for AI agents with an inspectable prepare/execute flow.",
   "private": false,
   "type": "module",
@@ -49,6 +49,7 @@
     "lint": "eslint src vitest.config.ts && npm run typecheck",
     "pack:check": "npm run build && npm pack --dry-run",
     "prepack": "npm run build",
+    "scenario:all": "npm run build && node scripts/run-scenarios.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"

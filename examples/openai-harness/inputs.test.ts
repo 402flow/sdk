@@ -69,29 +69,33 @@ describe('openai agent harness input helpers', () => {
     writeFileSync(
       fixturePath,
       JSON.stringify({
-        name: 'image-ready',
-        description: 'Ready image generation scenario.',
-        targetUrl: 'https://merchant.example.com/images/generate',
+        name: 'nickeljoke-compat',
+        description: 'Ready public compatibility scenario.',
+        targetUrl: 'https://nickeljoke.vercel.app/api/joke',
         method: 'POST',
         headers: {
           'content-type': 'application/json',
         },
         body: {
-          prompt: 'foggy coastline',
+          topic: 'sdk integration',
+          tone: 'dry',
+          audience: 'platform engineers',
         },
       }),
     );
 
     expect(loadOpenAiHarnessScenario(fixturePath)).toEqual({
-      name: 'image-ready',
-      description: 'Ready image generation scenario.',
-      targetUrl: 'https://merchant.example.com/images/generate',
+      name: 'nickeljoke-compat',
+      description: 'Ready public compatibility scenario.',
+      targetUrl: 'https://nickeljoke.vercel.app/api/joke',
       method: 'POST',
       headers: {
         'content-type': 'application/json',
       },
       body: {
-        prompt: 'foggy coastline',
+        topic: 'sdk integration',
+        tone: 'dry',
+        audience: 'platform engineers',
       },
     });
   });

@@ -120,8 +120,8 @@ try {
     },
   );
 
-  const paidContent = await result.response.json();
-  console.log('paid content:', paidContent);
+  const merchantBody = await result.response.json();
+  console.log('merchant response body:', merchantBody);
 } catch (error) {
   console.error('paid request failed', error);
   throw error;
@@ -129,6 +129,80 @@ try {
 ```
 
 If the merchant does not require payment for that exact request, the SDK returns a passthrough response. If the merchant returns a payable challenge, the SDK resolves payment through the control plane and returns a durable paid outcome.
+
+`result.response` is the merchant HTTP response body, so its JSON shape is merchant-defined. SDK-owned paid metadata such as `paidRequestId`, `paymentAttemptId`, `receiptId`, and `receipt` stays on the returned SDK result rather than being injected into the merchant JSON body.
+
+This means x402 and the SDK give you a stable place for the paid merchant response, but not a universal merchant-independent field name for the fulfilled content itself.
+
+For the planned 402flow demo merchant specifically:
+
+1. simulated paid content lives under `merchantBody.content`
+2. debugging payment summary fields live under `merchantBody.payment`
+3. echoed accepted request input lives under `merchantBody.request`
+
+### How Agents Know What They Paid For
+
+Practically, an agent should treat the merchant response in three layers:
+
+1. the SDK result carries durable payment metadata such as `receiptId` and `receipt`
+2. `result.response` carries the merchant fulfillment payload
+3. the merchant contract decides where the useful paid content lives inside that fulfillment payload
+
+For the 402flow demo merchant, the rule is simple:
+
+1. read `merchantBody.content` for the simulated paid content
+2. read `merchantBody.payment` for debugging-oriented payment summary fields
+3. read `merchantBody.request` for the echoed accepted request shape
+
+For arbitrary merchants, there is no x402-level guarantee that paid content lives under `content`, `data`, `result`, or any other universal field. The agent needs one of these sources of truth:
+
+1. parsed merchant challenge details from `prepared.challengeDetails` when the merchant publishes discovery data in the x402 challenge
+2. merchant-authoritative preparation hints from `prepared.hints`
+3. the merchant's out-of-band documented response contract
+4. caller-supplied `externalMetadata` when the caller already knows the endpoint schema
+
+Important distinction:
+
+1. today, merchant challenge metadata can give the SDK authoritative request-shape hints such as body type, body fields, query params, examples, and notes
+2. today, it does not give the SDK a universal fulfilled-response schema for where paid content will live in the merchant response body
+
+In other words:
+
+1. x402 tells the system how to pay
+2. the SDK preserves the resulting merchant response body
+3. the merchant contract tells the agent how to interpret that body
+
+If an agent does not have enough contract information to interpret the returned merchant body safely, it should not invent a payload shape. It should surface the raw merchant body and explain what contract detail is still missing.
+
+### What The Agent Can See During Preparation
+
+Yes, the agent can get merchant-authoritative request-shape hints when the merchant challenge includes them and the host uses `preparePaidRequest()`.
+
+The SDK also exposes a parsed challenge summary on ready preparations:
+
+1. `prepared.challengeDetails.resource` for spec-level resource metadata like `url`, `description`, and `mimeType`
+2. `prepared.challengeDetails.accepts` for the full advertised payment candidates, not just the normalized primary requirement
+3. `prepared.challengeDetails.extensions` for merchant-published extensions such as Bazaar discovery metadata
+
+Those hints are returned on `prepared.hints` and can include:
+
+1. `requestBodyType`
+2. `requestBodyExample`
+3. `requestBodyFields`
+4. `requestQueryParams`
+5. `requestPathParams`
+6. `notes`
+
+Each hint includes attribution so the agent can tell whether it came from:
+
+1. `merchant_challenge` with authoritative status
+2. `external_metadata` with advisory status
+
+So, practically:
+
+1. if you want the agent to see merchant-provided request-shape guidance, use `preparePaidRequest()` and pass both `prepared.challengeDetails` and `prepared.hints` through your host flow
+2. if the merchant publishes Bazaar discovery data, the host or agent can inspect `prepared.challengeDetails.extensions?.bazaar` for input and output examples straight from the challenge
+3. if you want the agent to know where fulfilled paid content lives in the final merchant response, that still needs a merchant-specific contract such as docs, host knowledge, or a convention like the demo merchant's `content` field
 
 ## Preparation Flow
 
@@ -319,15 +393,18 @@ That is the portable core SDK story. It should work across OpenAI, Claude, LangG
 
 If you want a minimal real host integration instead of the larger evaluation harness, use the tiny OpenAI Responses example in `examples/openai-tools-quickstart.mjs`.
 
+For repo-local example runs, create `.env` from `.env.example` in the SDK root. The SDK examples load that file directly, so scenario runs stay self-contained in this repo whether they point at a local control plane or a hosted environment.
+
 It keeps the host story narrow:
 
 1. create an `AgentPayClient`
 2. wrap it with optional `AgentHarness` so tool calls can pass `preparedId`
 3. expose `prepare_paid_request`, `execute_prepared_request`, and `get_execution_result`
 
-Run it with one prompt:
+Run it with one prompt. Either populate `.env` from `.env.example`, or export the same values in your shell for a one-off run:
 
 ```bash
+cp .env.example .env
 export OPENAI_API_KEY="..."
 export X402FLOW_CONTROL_PLANE_BASE_URL="https://402flow.ai"
 export X402FLOW_ORGANIZATION="acme-labs"
@@ -335,7 +412,7 @@ export X402FLOW_AGENT="reporting-worker"
 export X402FLOW_BOOTSTRAP_KEY="..."
 
 npm run example:openai-tools-quickstart -- \
-  "Prepare and execute a paid POST request to https://merchant.example.com/images/generate with JSON body {\"prompt\":\"foggy coastline\"}"
+  "Prepare and execute a paid POST request to https://nickeljoke.vercel.app/api/joke with JSON body {\"topic\":\"sdk integration\",\"tone\":\"dry\",\"audience\":\"platform engineers\"}"
 ```
 
 Use this when you want the shortest real host integration path. Use the full evaluation harness only when you need scenarios, transcripts, or repeated eval runs.

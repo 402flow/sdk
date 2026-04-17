@@ -28,12 +28,9 @@ import {
 const defaultPreparedTtlMs = 5 * 60 * 1000;
 
 const scenarioCatalog = {
-  'image-ready': './examples/scenarios/image-ready.json',
-  'image-revise': './examples/scenarios/image-revise.json',
   'nickeljoke-compat': './examples/scenarios/nickeljoke-compat.json',
-  'nickeljoke-reasoning-revise': './examples/scenarios/nickeljoke-reasoning-revise.json',
   'auor-public-holidays-reasoning-revise': './examples/scenarios/auor-public-holidays-reasoning-revise.json',
-  'quicknode-solana-devnet-bazaar-revise': './examples/scenarios/quicknode-solana-devnet-bazaar-revise.json',
+  'solana-devnet-research-brief-bazaar-revise': './examples/scenarios/solana-devnet-research-brief-bazaar-revise.json',
   'solana-devnet-research-brief-ready': './examples/scenarios/solana-devnet-research-brief-ready.json',
   'solana-devnet-research-brief-revise': './examples/scenarios/solana-devnet-research-brief-revise.json',
   'x402-org-protected-ready': './examples/scenarios/x402-org-protected-ready.json',
@@ -115,6 +112,7 @@ const promptPresets = {
           ? 'Do not invent externalMetadata beyond what is explicitly provided.'
           : undefined,
         'Treat externalMetadata as advisory when merchant challenge hints disagree.',
+        'Inspect challengeDetails when present for merchant resource metadata and extension-published discovery data before deciding whether to revise or execute.',
         'If preparation returns nextAction as treat_as_passthrough, do not pay and explain that paid execution is not required.',
         'If preparation returns nextAction as revise_request, revise only when the task provides enough information; otherwise stop and explain what is still missing.',
         'Execute only if preparation returns nextAction as execute.',
@@ -166,8 +164,9 @@ const promptPresets = {
           externalMetadata,
         }),
         'Treat externalMetadata as advisory when merchant challenge hints disagree.',
+        'Inspect challengeDetails when present for merchant resource metadata and extension-published discovery data before deciding whether to revise or execute.',
         'If preparation returns nextAction as treat_as_passthrough, do not pay and explain that paid execution is not required.',
-        'If preparation returns nextAction as revise_request, revise the request once using validationIssues and hints only when the task provides enough information; otherwise stop and explain what is still missing.',
+        'If preparation returns nextAction as revise_request, revise the request once using validationIssues, hints, and challengeDetails.extensions when present only when the task provides enough information; otherwise stop and explain what is still missing.',
         'If preparation returns nextAction as execute but hints still describe missing required body fields, revise once using hints.requestBodyExample (or externalMetadata.requestBodyExample when provided) only when the task provides enough information; otherwise stop and explain what is still missing.',
         'Do not execute the same prepared request twice unless the caller explicitly asks for a retry.',
         'After execution, call get_execution_result and summarize the stored result.',
@@ -195,7 +194,7 @@ const promptPresets = {
         `Use the Auor-compatible endpoint at ${url}.`,
         'First, call prepare_paid_request with method GET and the bare URL (no query params).',
         'If preparation returns nextAction as treat_as_passthrough, do not pay and explain that paid execution is not required.',
-        'If preparation returns nextAction as revise_request, inspect validationIssues and hints.requestQueryParams to determine what query parameters are required.',
+        'If preparation returns nextAction as revise_request, inspect validationIssues, hints.requestQueryParams, and challengeDetails.extensions when present to determine what query parameters are required.',
         'Reason about the correct values for each required parameter based on the task above only when the task provides enough information; otherwise stop and explain what is still missing.',
         'If you do revise the URL, call prepare_paid_request again with those query params appended to the URL.',
         'Execute only after the revised preparation returns nextAction as execute.',
@@ -247,7 +246,7 @@ const promptPresets = {
           externalMetadata,
         }),
         'Treat externalMetadata as advisory when merchant challenge hints disagree.',
-        'Call prepare_paid_request exactly once, do not execute, and explain the resulting nextAction, validationIssues, and whether the caller should revise, treat the request as passthrough, or stop because required business inputs are still missing.',
+        'Call prepare_paid_request exactly once, do not execute, and explain the resulting nextAction, challengeDetails, validationIssues, and whether the caller should revise, treat the request as passthrough, or stop because required business inputs are still missing.',
       ].join(' ');
     },
   },

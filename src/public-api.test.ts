@@ -235,6 +235,11 @@ describe('public SDK entrypoint', () => {
   it('supports preparing a payable request before execution through the public package import', async () => {
     const paymentRequired = {
       x402Version: 2,
+      resource: {
+        url: 'https://merchant.example.com/data',
+        description: 'Premium report endpoint',
+        mimeType: 'application/json',
+      },
       accepts: [
         {
           scheme: 'exact',
@@ -247,6 +252,18 @@ describe('public SDK entrypoint', () => {
           },
         },
       ],
+      extensions: {
+        bazaar: {
+          info: {
+            output: {
+              type: 'json',
+              example: {
+                report: 'daily',
+              },
+            },
+          },
+        },
+      },
     };
     const paymentRequiredHeader = Buffer.from(
       JSON.stringify(paymentRequired),
@@ -288,6 +305,15 @@ describe('public SDK entrypoint', () => {
     if (prepared.kind !== 'ready') {
       throw new Error(`Unexpected prepared kind: ${prepared.kind}`);
     }
+    expect(prepared.challengeDetails?.x402Version).toBe(2);
+    expect(prepared.challengeDetails?.resource?.description).toBe(
+      'Premium report endpoint',
+    );
+    expect(prepared.challengeDetails?.accepts[0]?.network).toBe('eip155:84532');
+    expect(
+      (prepared.challengeDetails?.extensions?.bazaar as { info?: { output?: { type?: string } } })
+        ?.info?.output?.type,
+    ).toBe('json');
     expect(prepared.paymentRequirement?.provenance.source).toBe(
       'merchant_challenge',
     );

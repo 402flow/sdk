@@ -18,6 +18,8 @@ import {
   paidRequestHttpRequestSchema,
   sdkPaymentDecisionRequestSchema,
   sdkPaymentDecisionResponseSchema,
+  type SdkPreparedChallengeAccept,
+  type SdkPreparedChallengeDetails,
   type SdkExternalMetadata,
   type SdkPreparedHintField,
   type SdkPreparedHintValue,
@@ -1290,6 +1292,98 @@ function buildPreparedPaymentRequirement(
   };
 }
 
+function buildPreparedChallengeAccept(
+  candidate: Record<string, unknown>,
+): SdkPreparedChallengeAccept {
+  const maxTimeoutSeconds = readIntegerValue(candidate.maxTimeoutSeconds);
+
+  return {
+    ...(readStringValue(candidate.scheme)
+      ? { scheme: readStringValue(candidate.scheme) }
+      : {}),
+    ...(readStringValue(candidate.network)
+      ? { network: readStringValue(candidate.network) }
+      : {}),
+    ...(readStringValue(candidate.amount)
+      ? { amount: readStringValue(candidate.amount) }
+      : {}),
+    ...(readStringValue(candidate.maxAmountRequired)
+      ? { maxAmountRequired: readStringValue(candidate.maxAmountRequired) }
+      : {}),
+    ...(readStringValue(candidate.asset)
+      ? { asset: readStringValue(candidate.asset) }
+      : {}),
+    ...(readStringValue(candidate.payTo)
+      ? { payTo: readStringValue(candidate.payTo) }
+      : {}),
+    ...(maxTimeoutSeconds && maxTimeoutSeconds > 0
+      ? { maxTimeoutSeconds }
+      : {}),
+    ...(readStringValue(candidate.resource)
+      ? { resource: readStringValue(candidate.resource) }
+      : {}),
+    ...(readStringValue(candidate.description)
+      ? { description: readStringValue(candidate.description) }
+      : {}),
+    ...(readStringValue(candidate.mimeType)
+      ? { mimeType: readStringValue(candidate.mimeType) }
+      : {}),
+    ...(candidate.outputSchema !== undefined
+      ? { outputSchema: candidate.outputSchema }
+      : {}),
+    ...(isRecord(candidate.extra)
+      ? { extra: candidate.extra }
+      : {}),
+  };
+}
+
+function buildPreparedChallengeDetails(
+  challenge: DetectedChallenge,
+): SdkPreparedChallengeDetails | undefined {
+  if (challenge.protocol !== 'x402') {
+    return undefined;
+  }
+
+  const paymentRequiredPayload = tryParsePaymentRequiredHeader(
+    challenge.headers['payment-required'],
+  );
+  const payload = unwrapChallengePayload(paymentRequiredPayload ?? challenge.body);
+
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+
+  const resource = isRecord(payload.resource) ? payload.resource : undefined;
+  const accepts = Array.isArray(payload.accepts)
+    ? payload.accepts.filter((candidate): candidate is Record<string, unknown> => isRecord(candidate))
+    : [];
+  const x402Version = readIntegerValue(payload.x402Version);
+
+  return {
+    ...(x402Version !== undefined ? { x402Version } : {}),
+    ...(readStringValue(payload.error)
+      ? { error: readStringValue(payload.error) }
+      : {}),
+    ...(resource && readStringValue(resource.url)
+      ? {
+          resource: {
+            url: readStringValue(resource.url)!,
+            ...(readStringValue(resource.description)
+              ? { description: readStringValue(resource.description) }
+              : {}),
+            ...(readStringValue(resource.mimeType)
+              ? { mimeType: readStringValue(resource.mimeType) }
+              : {}),
+          },
+        }
+      : {}),
+    accepts: accepts.map((candidate) => buildPreparedChallengeAccept(candidate)),
+    ...(isRecord(payload.extensions)
+      ? { extensions: payload.extensions }
+      : {}),
+  };
+}
+
 /**
  * Client bound to one organization/agent identity and one 402flow control plane.
  *
@@ -1330,15 +1424,18 @@ export class AgentPayClient {
     if (options.challenge) {
       const hints = await buildPreparedRequestHints(options, this.fetchImpl, options.challenge);
       const validationIssues = buildPreparedValidationIssues(request, hints);
+      const paymentRequirement = buildPreparedPaymentRequirement(options.challenge);
+      const challengeDetails = buildPreparedChallengeDetails(options.challenge);
 
       return {
         kind: 'ready',
         protocol: options.challenge.protocol,
         request,
         challenge: paidRequestChallengeSchema.parse(options.challenge),
-        ...(buildPreparedPaymentRequirement(options.challenge)
+        ...(challengeDetails ? { challengeDetails } : {}),
+        ...(paymentRequirement
           ? {
-              paymentRequirement: buildPreparedPaymentRequirement(options.challenge),
+              paymentRequirement,
             }
           : {}),
         hints,
@@ -1368,13 +1465,17 @@ export class AgentPayClient {
       };
     }
 
+    const paymentRequirement = buildPreparedPaymentRequirement(challenge);
+    const challengeDetails = buildPreparedChallengeDetails(challenge);
+
     return {
       kind: 'ready',
       protocol: challenge.protocol,
       request,
       challenge: paidRequestChallengeSchema.parse(challenge),
-      ...(buildPreparedPaymentRequirement(challenge)
-        ? { paymentRequirement: buildPreparedPaymentRequirement(challenge) }
+      ...(challengeDetails ? { challengeDetails } : {}),
+      ...(paymentRequirement
+        ? { paymentRequirement }
         : {}),
       hints,
       probe,

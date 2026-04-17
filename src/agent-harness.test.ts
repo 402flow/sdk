@@ -36,6 +36,11 @@ const baseReceipt = {
 function createPaymentRequiredResponse() {
   const paymentRequired = {
     x402Version: 2,
+    resource: {
+      url: 'https://merchant.example.com/v1/generate',
+      description: 'Generate a deterministic premium artifact.',
+      mimeType: 'application/json',
+    },
     accepts: [
       {
         scheme: 'exact',
@@ -48,6 +53,26 @@ function createPaymentRequiredResponse() {
         },
       },
     ],
+    extensions: {
+      bazaar: {
+        info: {
+          input: {
+            type: 'http',
+            method: 'POST',
+            bodyType: 'json',
+            body: {
+              prompt: 'hello',
+            },
+          },
+          output: {
+            type: 'json',
+            example: {
+              ok: true,
+            },
+          },
+        },
+      },
+    },
   };
   const paymentRequiredHeader = Buffer.from(
     JSON.stringify(paymentRequired),
@@ -147,9 +172,19 @@ describe('AgentHarness', () => {
       state: 'active',
       kind: 'ready',
       protocol: 'x402',
+      challengeDetails: {
+        x402Version: 2,
+        resource: {
+          description: 'Generate a deterministic premium artifact.',
+        },
+      },
       nextAction: 'execute',
       validationIssues: [],
     });
+    expect(
+      (prepared.challengeDetails?.extensions?.bazaar as { info?: { output?: { type?: string } } })
+        ?.info?.output?.type,
+    ).toBe('json');
 
     const storedRecord = harness.getPreparedRecord('prepared-1');
     expect(storedRecord.executionBinding).toEqual(

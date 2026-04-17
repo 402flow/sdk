@@ -15,7 +15,7 @@ describe('openai agent harness transcript helpers', () => {
     const transcript = createOpenAiHarnessTranscript({
       startedAt: started,
       preset: 'ready-json-post',
-      scenario: 'image-ready',
+      scenario: 'nickeljoke-compat',
       model: 'gpt-5.4',
       prompt: 'Prepare and execute the request.',
       maxTurns: 8,
@@ -49,7 +49,7 @@ describe('openai agent harness transcript helpers', () => {
       startedAt: started,
       completedAt: completed,
       preset: 'ready-json-post',
-      scenario: 'image-ready',
+      scenario: 'nickeljoke-compat',
       model: 'gpt-5.4',
       prompt: 'Prepare and execute the request.',
       maxTurns: 8,
