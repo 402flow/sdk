@@ -458,7 +458,7 @@ async function runHarnessSession({
 }) {
   const apiKey = getRequiredEnv('OPENAI_API_KEY');
   const openai = createOpenAiClient(apiKey);
-  const client = createClientFromEnv('harness');
+  const client = await createClientFromEnv('harness');
   const harness = new AgentHarness({
     client,
     preparedTtlMs,

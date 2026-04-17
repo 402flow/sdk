@@ -41,7 +41,7 @@ async function main() {
 
   const openai = createOpenAiClient(getRequiredEnv('OPENAI_API_KEY'));
   const harness = new AgentHarness({
-    client: createClientFromEnv('quickstart'),
+    client: await createClientFromEnv('quickstart'),
   });
   const tools = createToolHandlers(harness);
   const maxTurns = Number(process.env.OPENAI_MAX_TURNS ?? defaultMaxTurns);

@@ -1,7 +1,5 @@
 import './load-env.mjs';
 
-import { AgentPayClient } from '../dist/index.js';
-
 export const defaultModel = process.env.OPENAI_MODEL ?? 'gpt-5.4';
 export const defaultMaxTurns = 8;
 
@@ -80,7 +78,7 @@ export function getRequiredEnv(name) {
   return value;
 }
 
-export function createClientFromEnv(exampleName = 'example') {
+export async function createClientFromEnv(exampleName = 'example') {
   const controlPlaneBaseUrl = getRequiredEnv('X402FLOW_CONTROL_PLANE_BASE_URL');
   const organization = getRequiredEnv('X402FLOW_ORGANIZATION');
   const agent = getRequiredEnv('X402FLOW_AGENT');
@@ -92,6 +90,8 @@ export function createClientFromEnv(exampleName = 'example') {
       `Set X402FLOW_BOOTSTRAP_KEY or X402FLOW_RUNTIME_TOKEN before running the ${exampleName}.`,
     );
   }
+
+  const { AgentPayClient } = await import('../dist/index.js');
 
   return new AgentPayClient({
     controlPlaneBaseUrl,
