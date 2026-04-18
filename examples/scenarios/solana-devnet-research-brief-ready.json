@@ -1,7 +1,7 @@
 {
   "name": "solana-devnet-research-brief-ready",
   "description": "Canonical local agentic scenario against the self-hosted Solana devnet merchant research brief route with a valid shaped body for paid execution.",
-  "targetUrl": "http://127.0.0.1:4123/paid/solana-devnet/research-brief",
+  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet",
   "method": "POST",
   "headers": {
     "content-type": "application/json"

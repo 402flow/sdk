@@ -14,6 +14,7 @@ import {
   loadJsonPromptValue,
   loadOpenAiHarnessScenario,
 } from './openai-harness/inputs.mjs';
+import { defaultTranscriptFileForScenario } from './openai-harness/transcript-paths.mjs';
 import {
   createClientFromEnv,
   createOpenAiClient,
@@ -33,6 +34,9 @@ const scenarioCatalog = {
   'solana-devnet-research-brief-bazaar-revise': './examples/scenarios/solana-devnet-research-brief-bazaar-revise.json',
   'solana-devnet-research-brief-ready': './examples/scenarios/solana-devnet-research-brief-ready.json',
   'solana-devnet-research-brief-revise': './examples/scenarios/solana-devnet-research-brief-revise.json',
+  'solana-mainnet-research-brief-bazaar-revise': './examples/scenarios/solana-mainnet-research-brief-bazaar-revise.json',
+  'solana-mainnet-research-brief-ready': './examples/scenarios/solana-mainnet-research-brief-ready.json',
+  'solana-mainnet-research-brief-revise': './examples/scenarios/solana-mainnet-research-brief-revise.json',
   'x402-org-protected-ready': './examples/scenarios/x402-org-protected-ready.json',
 };
 
@@ -277,7 +281,7 @@ Optional flags:
   --model <id>           Override OPENAI_MODEL
   --max-turns <number>   Maximum tool loop turns. Default: ${defaultMaxTurns}
   --ttl-ms <number>      Prepared request TTL. Default: ${defaultPreparedTtlMs}
-  --transcript-file <p>  Write the live run transcript to a JSON file. Defaults to ./tmp/<scenario>-run-<timestamp>.json for scenario runs.
+  --transcript-file <p>  Write the live run transcript to a JSON file. Defaults to ./tmp/scenario-runs/<scenario>-run-<timestamp>.json for scenario runs.
   --help                 Show this help
 
 Prompt presets:
@@ -425,19 +429,6 @@ function printScenarios() {
     const scenario = loadOpenAiHarnessScenario(scenarioCatalog[name]);
     console.log(`${name}: ${scenario.description}`);
   }
-}
-
-function formatTranscriptTimestamp(date) {
-  return date
-    .toISOString()
-    .replace(/[-:]/g, '')
-    .replace(/\.\d{3}Z$/, 'Z');
-}
-
-function defaultTranscriptFileForScenario(scenarioName) {
-  const timestamp = formatTranscriptTimestamp(new Date());
-
-  return `./tmp/${scenarioName}-run-${timestamp}.json`;
 }
 
 async function writeTranscriptFile(filePath, transcript) {

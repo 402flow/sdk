@@ -1,18 +1,18 @@
 {
-  "name": "solana-devnet-research-brief-revise",
-  "description": "Canonical local agentic scenario against the self-hosted Solana devnet merchant research brief route. Starts incomplete and is intended to exercise request revision when preparation validation is configured.",
-  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet",
+  "name": "solana-mainnet-research-brief-revise",
+  "description": "Canonical local agentic scenario against the self-hosted Solana mainnet merchant research brief route. Starts incomplete and is intended to exercise request revision when preparation validation is configured.",
+  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/solana-mainnet",
   "method": "POST",
   "headers": {
     "content-type": "application/json"
   },
   "body": {
-    "topic": "solana devnet receipt promotion"
+    "topic": "solana mainnet receipt promotion"
   },
   "externalMetadata": {
-    "description": "Self-hosted research brief endpoint for the first real local agentic proving path.",
+    "description": "Self-hosted Solana mainnet research brief endpoint for the real-money local agentic proving path.",
     "requestBodyType": "json",
-    "requestBodyExample": "{\"topic\":\"solana devnet receipt promotion\",\"audience\":\"sdk integrator\",\"format\":\"bullets\"}",
+    "requestBodyExample": "{\"topic\":\"solana mainnet receipt promotion\",\"audience\":\"sdk integrator\",\"format\":\"bullets\"}",
     "requestBodyFields": [
       {
         "name": "topic",

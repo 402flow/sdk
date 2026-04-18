@@ -1,6 +1,6 @@
 {
   "name": "@402flow/sdk",
-  "version": "0.1.0-alpha.17",
+  "version": "0.1.0-alpha.18",
   "description": "Paid HTTP SDK for AI agents with an inspectable prepare/execute flow.",
   "private": false,
   "type": "module",

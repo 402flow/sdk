@@ -23,7 +23,10 @@ Current named scenarios:
 3. `solana-devnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana devnet merchant research brief route
 4. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
 5. `solana-devnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-6. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
+6. `solana-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana mainnet merchant research brief route
+7. `solana-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+8. `solana-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+9. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
 
 ## Recommended Preset Pairings
 
@@ -34,25 +37,34 @@ Recommended pairings:
 3. `solana-devnet-research-brief-bazaar-revise` -> `revise-json-post`
 4. `solana-devnet-research-brief-ready` -> `ready-json-post`
 5. `solana-devnet-research-brief-revise` -> `revise-json-post`
-6. `x402-org-protected-ready` -> `ready-json-post`
+6. `solana-mainnet-research-brief-bazaar-revise` -> `revise-json-post`
+7. `solana-mainnet-research-brief-ready` -> `ready-json-post`
+8. `solana-mainnet-research-brief-revise` -> `revise-json-post`
+9. `x402-org-protected-ready` -> `ready-json-post`
 
 ## Canonical Local Agentic Path
 
 The first product-representative local scenario is the self-hosted Solana devnet merchant research brief route:
 
 ```text
-http://127.0.0.1:4123/paid/solana-devnet/research-brief
+http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet
 ```
 
 This is the canonical local path when request shaping should matter in a real agent loop.
+
+The matching real-money local mainnet scenario path is:
+
+```text
+http://127.0.0.1:4123/demo-merchant/research-brief/solana-mainnet
+```
 
 Prerequisites:
 
 1. local agent-pay infrastructure is running
 2. the local API is running, for example at `http://localhost:3001`
-3. the self-hosted Solana merchant is running via `pnpm merchant:solana`
+3. the self-hosted Solana merchant is running via `pnpm dev:demo-merchant`
 4. a local org and agent exist and can authenticate through the SDK
-5. one Solana devnet execution rail is enabled for that org
+5. one Solana devnet or Solana mainnet execution rail is enabled for that org, depending on the scenario
 6. either `X402FLOW_BOOTSTRAP_KEY` or `X402FLOW_RUNTIME_TOKEN` is set
 
 Example local revise run:
@@ -67,7 +79,7 @@ export X402FLOW_BOOTSTRAP_KEY="..."
 npm run example:openai-harness -- \
   --preset revise-json-post \
   --scenario solana-devnet-research-brief-revise \
-  --transcript-file ./tmp/solana-devnet-research-brief-revise-run.json
+  --transcript-file ./tmp/scenario-runs/solana-devnet-research-brief-revise-run.json
 ```
 
 Run the scenario sweep from the SDK repo itself. Keep SDK scenario setup and credentials in this repo's `.env` so the examples can point at local `agent-pay` or future public demo merchants without a control-plane wrapper.

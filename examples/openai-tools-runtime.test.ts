@@ -12,7 +12,7 @@ describe('openai tools runtime prepare handler', () => {
     });
 
     const result = await handlers.prepare_paid_request({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -24,7 +24,7 @@ describe('openai tools runtime prepare handler', () => {
     });
 
     expect(preparePaidRequest).toHaveBeenCalledWith({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -35,7 +35,7 @@ describe('openai tools runtime prepare handler', () => {
       },
     });
     expect(result).toEqual({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -56,7 +56,7 @@ describe('openai tools runtime prepare handler', () => {
     });
 
     const result = await handlers.prepare_paid_request({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       body: JSON.stringify({
         headers: {
@@ -76,7 +76,7 @@ describe('openai tools runtime prepare handler', () => {
     });
 
     expect(preparePaidRequest).toHaveBeenCalledWith({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -90,7 +90,7 @@ describe('openai tools runtime prepare handler', () => {
       },
     });
     expect(result).toEqual({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -114,14 +114,14 @@ describe('openai tools runtime prepare handler', () => {
     });
 
     const result = await handlers.prepare_paid_request({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       body:
         '{"topic":"solana-devnet receipt promotion","audience":"sdk integrator","format":"bullets"}',
     });
 
     expect(preparePaidRequest).toHaveBeenCalledWith({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -130,7 +130,7 @@ describe('openai tools runtime prepare handler', () => {
         '{"topic":"solana-devnet receipt promotion","audience":"sdk integrator","format":"bullets"}',
     });
     expect(result).toEqual({
-      url: 'http://127.0.0.1:4123/paid/solana-devnet/research-brief',
+      url: 'http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet',
       method: 'POST',
       headers: {
         'content-type': 'application/json',

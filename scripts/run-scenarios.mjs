@@ -2,15 +2,16 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import {
+  createScenarioArtifactPaths,
+  scenarioRunsDir,
+  summaryPath,
+  tmpDir,
+} from '../examples/openai-harness/transcript-paths.mjs';
 
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const sdkRoot = resolve(scriptDir, '..');
-const tmpDir = resolve(sdkRoot, 'tmp');
-const scenarioRunsDir = resolve(tmpDir, 'scenario-runs');
-const summaryPath = resolve(tmpDir, 'scenario-summary.txt');
+const sdkRoot = resolve(import.meta.dirname ?? '.', '..');
 
 const scenarioPlan = [
   ['nickeljoke-compat', 'ready-json-post'],
@@ -18,6 +19,9 @@ const scenarioPlan = [
   ['solana-devnet-research-brief-bazaar-revise', 'revise-json-post'],
   ['solana-devnet-research-brief-ready', 'ready-json-post'],
   ['solana-devnet-research-brief-revise', 'revise-json-post'],
+  ['solana-mainnet-research-brief-bazaar-revise', 'revise-json-post'],
+  ['solana-mainnet-research-brief-ready', 'ready-json-post'],
+  ['solana-mainnet-research-brief-revise', 'revise-json-post'],
   ['x402-org-protected-ready', 'ready-json-post'],
 ];
 
@@ -114,8 +118,7 @@ const summaryLines = [];
 let hadFailure = false;
 
 for (const [scenario, preset] of scenarioPlan) {
-  const transcriptPath = resolve(scenarioRunsDir, `${scenario}.json`);
-  const logPath = resolve(scenarioRunsDir, `${scenario}.log`);
+  const { transcriptPath, logPath } = createScenarioArtifactPaths(scenario);
   const result = runHarnessScenario({ scenario, preset, transcriptPath });
 
   writeFileSync(logPath, result.output, 'utf8');

@@ -1,0 +1,12 @@
+{
+  "name": "solana-mainnet-research-brief-bazaar-revise",
+  "description": "Canonical local Bazaar-driven revise scenario against the self-hosted Solana mainnet merchant research brief route. Starts incomplete and relies on merchant-published challenge metadata instead of externalMetadata.",
+  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/solana-mainnet",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "topic": "solana mainnet receipt promotion"
+  }
+}
