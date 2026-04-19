@@ -1,0 +1,102 @@
+{
+  "name": "execution-failed-merchant-rejected",
+  "description": "Mock governance scenario where the merchant rejects the request after execution starts.",
+  "targetUrl": "https://merchant.example.com/api/post-payment-review",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "reportType": "reviewed",
+    "format": "json"
+  },
+  "expectedOutcomeKind": "execution_failed",
+  "expectedFinalTextIncludes": ["merchant", "rejected"],
+  "mock": {
+    "prepareResult": {
+      "kind": "ready",
+      "protocol": "x402",
+      "request": {
+        "url": "https://merchant.example.com/api/post-payment-review",
+        "method": "POST",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"reportType\":\"reviewed\",\"format\":\"json\"}"
+      },
+      "challenge": {
+        "protocol": "x402",
+        "headers": {}
+      },
+      "challengeDetails": {
+        "x402Version": 2,
+        "resource": {
+          "url": "https://merchant.example.com/api/post-payment-review",
+          "description": "Post payment review API"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "amount": "50000",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "payTo": "0xabc123",
+            "extra": {
+              "name": "USDC"
+            }
+          }
+        ]
+      },
+      "paymentRequirement": {
+        "protocol": "x402",
+        "description": "Post payment review API",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "network": "eip155:84532",
+        "amountType": "exact",
+        "amountMinor": "50000",
+        "amount": "0.050000",
+        "precision": 6,
+        "provenance": {
+          "source": "merchant_challenge",
+          "authority": "authoritative"
+        }
+      },
+      "hints": {
+        "requestBodyFields": [],
+        "requestQueryParams": [],
+        "requestPathParams": [],
+        "notes": []
+      },
+      "validationIssues": [],
+      "nextAction": "execute"
+    },
+    "executeOutcome": {
+      "kind": "execution_failed",
+      "protocol": "x402",
+      "response": {
+        "status": 424,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"error\":\"merchant rejected fulfillment\"}"
+      },
+      "paidRequestId": "00000000-0000-0000-0000-000000000404",
+      "paymentAttemptId": "00000000-0000-0000-0000-000000000504",
+      "reason": "The merchant rejected the paid request after execution started.",
+      "decision": {
+        "outcome": "execution_failed",
+        "paidRequestId": "00000000-0000-0000-0000-000000000404",
+        "paymentAttemptId": "00000000-0000-0000-0000-000000000504",
+        "reasonCode": "merchant_rejected",
+        "reason": "The merchant rejected the paid request after execution started.",
+        "merchantResponse": {
+          "status": 424,
+          "headers": {
+            "content-type": "application/json"
+          },
+          "body": "{\"error\":\"merchant rejected fulfillment\"}"
+        }
+      }
+    }
+  }
+}

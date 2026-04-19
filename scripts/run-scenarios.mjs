@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { loadOpenAiHarnessScenario } from '../examples/openai-harness/inputs.mjs';
 import {
   createScenarioArtifactPaths,
   scenarioRunsDir,
@@ -29,7 +30,19 @@ const scenarioPlan = [
   ['solana-mainnet-research-brief-ready', 'ready-json-post'],
   ['solana-mainnet-research-brief-revise', 'revise-json-post'],
   ['x402-org-protected-ready', 'ready-json-post'],
+  ['policy-denied-budget-exceeded', 'mock-governance'],
+  ['policy-denied-merchant-not-allowed', 'mock-governance'],
+  ['policy-review-required', 'mock-governance'],
+  ['execution-failed-merchant-rejected', 'mock-governance'],
+  ['execution-inconclusive', 'mock-governance'],
+  ['preflight-failed-no-rail', 'mock-governance'],
 ];
+
+function loadScenarioDefinition(scenarioName) {
+  return loadOpenAiHarnessScenario(
+    resolve(sdkRoot, 'examples', 'scenarios', `${scenarioName}.json`),
+  );
+}
 
 function runHarnessScenario({ scenario, preset, transcriptPath }) {
   try {
@@ -68,50 +81,132 @@ function readTranscript(transcriptPath) {
   return JSON.parse(readFileSync(transcriptPath, 'utf8'));
 }
 
-function extractSemanticOutcome(transcript) {
-  const toolCalls = Array.isArray(transcript.toolCalls) ? transcript.toolCalls : [];
+function createSemanticFailure(message, transcript) {
+  return {
+    ok: false,
+    finalText:
+      typeof transcript?.finalText === 'string'
+        ? `${message}\n\n${transcript.finalText}`
+        : message,
+  };
+}
 
-  for (const toolCall of toolCalls) {
-    const executionResult = toolCall?.result?.executionResult;
+function validatePreparationSummaries(toolCalls, transcript) {
+  const prepareCalls = toolCalls.filter(
+    (toolCall) => toolCall?.name === 'prepare_paid_request',
+  );
+
+  if (prepareCalls.length === 0) {
+    return createSemanticFailure(
+      'Scenario did not record any prepare_paid_request tool calls.',
+      transcript,
+    );
+  }
+
+  for (const toolCall of prepareCalls) {
+    const result = toolCall?.result;
 
     if (
-      executionResult?.harnessDisposition === 'executed'
-      && executionResult?.sdkOutcomeKind === 'success'
+      result
+      && typeof result === 'object'
+      && 'kind' in result
+      && (typeof result.costSummary !== 'string' || result.costSummary.trim().length === 0)
     ) {
-      return {
-        ok: true,
-        status: executionResult.status,
-        receiptId: executionResult.receiptId,
-        paidRequestId: executionResult.paidRequestId,
-      };
+      return createSemanticFailure(
+        'Scenario prepare result was missing costSummary.',
+        transcript,
+      );
     }
   }
 
-  for (const toolCall of toolCalls) {
-    if (
-      toolCall?.result?.harnessDisposition === 'executed'
-      && toolCall?.result?.sdkOutcomeKind === 'success'
-    ) {
-      return {
-        ok: true,
-        status: toolCall.result.status,
-        receiptId: toolCall.result.receiptId,
-        paidRequestId: toolCall.result.paidRequestId,
-      };
+  return null;
+}
+
+function findExecutionLookup(toolCalls) {
+  const executeIndex = toolCalls.findIndex(
+    (toolCall) => toolCall?.name === 'execute_prepared_request',
+  );
+
+  if (executeIndex === -1) {
+    return undefined;
+  }
+
+  return toolCalls.find(
+    (toolCall, index) =>
+      index > executeIndex
+      && toolCall?.name === 'get_execution_result'
+      && toolCall?.result?.executionResult?.harnessDisposition === 'executed',
+  );
+}
+
+function extractSemanticOutcome(transcript, scenarioDefinition) {
+  const toolCalls = Array.isArray(transcript.toolCalls) ? transcript.toolCalls : [];
+  const preparationFailure = validatePreparationSummaries(toolCalls, transcript);
+
+  if (preparationFailure) {
+    return preparationFailure;
+  }
+
+  const expectedOutcomeKind = scenarioDefinition.expectedOutcomeKind ?? 'success';
+  const executionLookup = findExecutionLookup(toolCalls);
+
+  if (!executionLookup) {
+    return createSemanticFailure(
+      'Scenario did not call get_execution_result after execution.',
+      transcript,
+    );
+  }
+
+  const executionResult = executionLookup.result.executionResult;
+
+  if (executionResult?.sdkOutcomeKind !== expectedOutcomeKind) {
+    return createSemanticFailure(
+      `Scenario expected sdkOutcomeKind ${expectedOutcomeKind} but observed ${executionResult?.sdkOutcomeKind ?? 'none'}.`,
+      transcript,
+    );
+  }
+
+  const finalText =
+    typeof transcript.finalText === 'string' ? transcript.finalText : '';
+
+  if (expectedOutcomeKind !== 'success') {
+    const lowerFinalText = finalText.toLowerCase();
+    const looksLikeSuccessClaim = [
+      'executed successfully',
+      'outcome: `success`',
+      'outcome: success',
+      'successful via 402flow',
+    ].some((phrase) => lowerFinalText.includes(phrase));
+
+    if (looksLikeSuccessClaim) {
+      return createSemanticFailure(
+        'Scenario final text claimed success for a non-success outcome.',
+        transcript,
+      );
+    }
+
+    for (const snippet of scenarioDefinition.expectedFinalTextIncludes ?? []) {
+      if (!lowerFinalText.includes(snippet.toLowerCase())) {
+        return createSemanticFailure(
+          `Scenario final text did not include expected snippet: ${snippet}`,
+          transcript,
+        );
+      }
     }
   }
 
   return {
-    ok: false,
-    finalText:
-      typeof transcript.finalText === 'string'
-        ? transcript.finalText
-        : 'Scenario did not record a successful execution result.',
+    ok: true,
+    outcomeKind: executionResult.sdkOutcomeKind,
+    status: executionResult.status,
+    receiptId: executionResult.receiptId,
+    paidRequestId: executionResult.paidRequestId,
   };
 }
 
-function formatFailure(output, transcript) {
-  const finalText = typeof transcript?.finalText === 'string' ? transcript.finalText : undefined;
+function formatFailure(output, transcript, semanticFailureText) {
+  const finalText = semanticFailureText
+    ?? (typeof transcript?.finalText === 'string' ? transcript.finalText : undefined);
   const outputTail = output.trim().split('\n').slice(-40).join('\n').trim();
 
   return [finalText, outputTail].filter(Boolean).join('\n\n');
@@ -124,6 +219,7 @@ const summaryLines = [];
 let hadFailure = false;
 
 for (const [scenario, preset] of scenarioPlan) {
+  const scenarioDefinition = loadScenarioDefinition(scenario);
   const { transcriptPath, logPath } = createScenarioArtifactPaths(scenario);
   const result = runHarnessScenario({ scenario, preset, transcriptPath });
 
@@ -151,17 +247,20 @@ for (const [scenario, preset] of scenarioPlan) {
     continue;
   }
 
-  const semanticOutcome = extractSemanticOutcome(transcript);
+  const semanticOutcome = extractSemanticOutcome(transcript, scenarioDefinition);
 
   if (!semanticOutcome.ok) {
     hadFailure = true;
     summaryLines.push('FAIL semantic');
-    summaryLines.push(formatFailure(result.output, transcript));
+    summaryLines.push(
+      formatFailure(result.output, transcript, semanticOutcome.finalText),
+    );
     summaryLines.push('');
     continue;
   }
 
   summaryLines.push('PASS');
+  summaryLines.push(`sdkOutcomeKind=${semanticOutcome.outcomeKind}`);
   summaryLines.push(`status=${semanticOutcome.status}`);
   if (semanticOutcome.receiptId) {
     summaryLines.push(`receiptId=${semanticOutcome.receiptId}`);

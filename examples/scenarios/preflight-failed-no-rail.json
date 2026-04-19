@@ -1,0 +1,101 @@
+{
+  "name": "preflight-failed-no-rail",
+  "description": "Mock governance scenario where no compatible payment rail is configured for the selected payment terms.",
+  "targetUrl": "https://merchant.example.com/api/no-rail-report",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "reportType": "rail-check",
+    "format": "json"
+  },
+  "expectedOutcomeKind": "preflight_failed",
+  "expectedFinalTextIncludes": ["rail", "configured"],
+  "mock": {
+    "prepareResult": {
+      "kind": "ready",
+      "protocol": "x402",
+      "request": {
+        "url": "https://merchant.example.com/api/no-rail-report",
+        "method": "POST",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"reportType\":\"rail-check\",\"format\":\"json\"}"
+      },
+      "challenge": {
+        "protocol": "x402",
+        "headers": {}
+      },
+      "challengeDetails": {
+        "x402Version": 2,
+        "resource": {
+          "url": "https://merchant.example.com/api/no-rail-report",
+          "description": "No rail API"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "amount": "12000",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "payTo": "0xabc123",
+            "extra": {
+              "name": "USDC"
+            }
+          }
+        ]
+      },
+      "paymentRequirement": {
+        "protocol": "x402",
+        "description": "No rail API",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "network": "eip155:84532",
+        "amountType": "exact",
+        "amountMinor": "12000",
+        "amount": "0.012000",
+        "precision": 6,
+        "provenance": {
+          "source": "merchant_challenge",
+          "authority": "authoritative"
+        }
+      },
+      "hints": {
+        "requestBodyFields": [],
+        "requestQueryParams": [],
+        "requestPathParams": [],
+        "notes": []
+      },
+      "validationIssues": [],
+      "nextAction": "execute"
+    },
+    "executeOutcome": {
+      "kind": "preflight_failed",
+      "protocol": "x402",
+      "response": {
+        "status": 502,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "outcome": "preflight_failed",
+          "paidRequestId": "00000000-0000-0000-0000-000000000406",
+          "paymentAttemptId": "00000000-0000-0000-0000-000000000506",
+          "reasonCode": "preflight_incompatible",
+          "reason": "No compatible payment rail is configured for Base Sepolia USDC."
+        }
+      },
+      "paidRequestId": "00000000-0000-0000-0000-000000000406",
+      "paymentAttemptId": "00000000-0000-0000-0000-000000000506",
+      "reason": "No compatible payment rail is configured for Base Sepolia USDC.",
+      "decision": {
+        "outcome": "preflight_failed",
+        "paidRequestId": "00000000-0000-0000-0000-000000000406",
+        "paymentAttemptId": "00000000-0000-0000-0000-000000000506",
+        "reasonCode": "preflight_incompatible",
+        "reason": "No compatible payment rail is configured for Base Sepolia USDC."
+      }
+    }
+  }
+}

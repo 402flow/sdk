@@ -1,14 +1,47 @@
 import './load-env.mjs';
 
+async function loadCanonicalHarnessMetadata() {
+  try {
+    const distModule = await import('../dist/index.js');
+
+    if (
+      distModule.defaultHarnessInstructions
+      && Array.isArray(distModule.defaultHarnessToolSpecs)
+    ) {
+      return distModule;
+    }
+  } catch (distError) {
+    try {
+      return await import('../src/index.ts');
+    } catch {
+      throw distError;
+    }
+  }
+
+  return import('../src/index.ts');
+}
+
+const { defaultHarnessInstructions, defaultHarnessToolSpecs } =
+  await loadCanonicalHarnessMetadata();
+
+function getDefaultHarnessToolDescription(name) {
+  const spec = defaultHarnessToolSpecs.find((entry) => entry.name === name);
+
+  if (!spec) {
+    throw new Error(`Missing default harness tool spec for ${name}.`);
+  }
+
+  return spec.description;
+}
+
 export const defaultModel = process.env.OPENAI_MODEL ?? 'gpt-5.4';
 export const defaultMaxTurns = 8;
 
-const defaultToolDefinitions = [
+export const defaultToolDefinitions = [
   {
     type: 'function',
     name: 'prepare_paid_request',
-    description:
-      'Prepare a candidate paid HTTP request and inspect payment terms, parsed challenge details, request hints, and nextAction before execution.',
+    description: getDefaultHarnessToolDescription('prepare_paid_request'),
     strict: false,
     parameters: {
       type: 'object',
@@ -28,8 +61,7 @@ const defaultToolDefinitions = [
   {
     type: 'function',
     name: 'execute_prepared_request',
-    description:
-      'Execute a previously prepared paid request only after preparation says the request is ready.',
+    description: getDefaultHarnessToolDescription('execute_prepared_request'),
     strict: false,
     parameters: {
       type: 'object',
@@ -43,8 +75,7 @@ const defaultToolDefinitions = [
   {
     type: 'function',
     name: 'get_execution_result',
-    description:
-      'Read the stored execution result for a prepared paid request after execution completes.',
+    description: getDefaultHarnessToolDescription('get_execution_result'),
     strict: false,
     parameters: {
       type: 'object',
@@ -56,17 +87,7 @@ const defaultToolDefinitions = [
   },
 ];
 
-export const defaultInstructions = [
-  'Safely orchestrate paid HTTP requests through 402flow.',
-  'Always call prepare_paid_request before any paid execution.',
-  'Inspect challengeDetails when present for merchant resource metadata, advertised payment candidates, and extension-published discovery data.',
-  'Only call execute_prepared_request when preparation returns nextAction as execute.',
-  'If preparation returns nextAction as treat_as_passthrough, do not pay and explain that paid execution is not required.',
-  'If preparation returns nextAction as revise_request, use validationIssues, hints, and challengeDetails.extensions when present to revise only when the task provides enough information; otherwise stop and explain what is still missing.',
-  'Use externalMetadata only when the caller already has endpoint metadata, and treat it as advisory when merchant challenge hints disagree.',
-  'Do not invent missing business parameters or execute the same prepared request twice unless the caller explicitly asks for a retry.',
-  'After execution, call get_execution_result before your final summary and report denied, pending, failed, or inconclusive outcomes clearly.',
-].join(' ');
+export const defaultInstructions = defaultHarnessInstructions;
 
 export function getRequiredEnv(name) {
   const value = process.env[name];

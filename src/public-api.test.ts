@@ -9,6 +9,8 @@ import {
   createFormUrlEncodedBody,
   createAgentPayClient,
   createJsonRequestBody,
+  defaultHarnessInstructions,
+  defaultHarnessToolSpecs,
   isReplayableRequestBody,
   sdkClientVersion,
   sdkClientVersionHeaderName,
@@ -30,6 +32,23 @@ describe('public SDK entrypoint', () => {
 
   it('exports the deterministic harness through the public package import', () => {
     expect(AgentHarness).toBeTypeOf('function');
+  });
+
+  it('exports canonical harness instructions and tool specs through the public package import', () => {
+    expect(defaultHarnessInstructions).toContain(
+      'Follow each tool\'s description for when and how to call it.',
+    );
+    expect(defaultHarnessToolSpecs.map((entry) => entry.name)).toEqual([
+      'prepare_paid_request',
+      'execute_prepared_request',
+      'get_execution_result',
+    ]);
+    expect(defaultHarnessToolSpecs[0]?.description).toContain(
+      'nextAction is the authoritative machine contract',
+    );
+    expect(defaultHarnessToolSpecs[1]?.description).toContain(
+      'already consumed',
+    );
   });
 
   it('exports replayable body helpers through the public package import', () => {

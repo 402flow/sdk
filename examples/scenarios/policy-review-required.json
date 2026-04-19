@@ -1,0 +1,101 @@
+{
+  "name": "policy-review-required",
+  "description": "Mock governance scenario where a paid request requires manual review before execution.",
+  "targetUrl": "https://merchant.example.com/api/high-risk-report",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "reportType": "high-risk",
+    "format": "json"
+  },
+  "expectedOutcomeKind": "denied",
+  "expectedFinalTextIncludes": ["review", "approval"],
+  "mock": {
+    "prepareResult": {
+      "kind": "ready",
+      "protocol": "x402",
+      "request": {
+        "url": "https://merchant.example.com/api/high-risk-report",
+        "method": "POST",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"reportType\":\"high-risk\",\"format\":\"json\"}"
+      },
+      "challenge": {
+        "protocol": "x402",
+        "headers": {}
+      },
+      "challengeDetails": {
+        "x402Version": 2,
+        "resource": {
+          "url": "https://merchant.example.com/api/high-risk-report",
+          "description": "High risk reports API"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "amount": "75000",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "payTo": "0xabc123",
+            "extra": {
+              "name": "USDC"
+            }
+          }
+        ]
+      },
+      "paymentRequirement": {
+        "protocol": "x402",
+        "description": "High risk reports API",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "network": "eip155:84532",
+        "amountType": "exact",
+        "amountMinor": "75000",
+        "amount": "0.075000",
+        "precision": 6,
+        "provenance": {
+          "source": "merchant_challenge",
+          "authority": "authoritative"
+        }
+      },
+      "hints": {
+        "requestBodyFields": [],
+        "requestQueryParams": [],
+        "requestPathParams": [],
+        "notes": []
+      },
+      "validationIssues": [],
+      "nextAction": "execute"
+    },
+    "executeOutcome": {
+      "kind": "denied",
+      "protocol": "x402",
+      "response": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "outcome": "deny",
+          "paidRequestId": "00000000-0000-0000-0000-000000000403",
+          "reasonCode": "policy_review_required",
+          "reason": "Manual approval is required before this paid request can run.",
+          "policyReviewEventId": "00000000-0000-0000-0000-000000000053"
+        }
+      },
+      "paidRequestId": "00000000-0000-0000-0000-000000000403",
+      "reason": "Manual approval is required before this paid request can run.",
+      "policyReviewEventId": "00000000-0000-0000-0000-000000000053",
+      "decision": {
+        "outcome": "deny",
+        "paidRequestId": "00000000-0000-0000-0000-000000000403",
+        "reasonCode": "policy_review_required",
+        "reason": "Manual approval is required before this paid request can run.",
+        "policyReviewEventId": "00000000-0000-0000-0000-000000000053"
+      }
+    }
+  }
+}

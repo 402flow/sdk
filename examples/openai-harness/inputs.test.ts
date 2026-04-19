@@ -120,4 +120,53 @@ describe('openai agent harness input helpers', () => {
       method: 'POST',
     });
   });
+
+  it('loads governance scenario metadata with expected outcomes and mock data', () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'sdk-harness-scenario-governance-'));
+    const fixturePath = join(tempDirectory, 'scenario.json');
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        name: 'policy-denied-budget-exceeded',
+        description: 'Governance denial scenario.',
+        targetUrl: 'https://merchant.example.com/api/reports',
+        method: 'POST',
+        expectedOutcomeKind: 'denied',
+        expectedFinalTextIncludes: ['budget', 'exceeded'],
+        mock: {
+          prepareResult: {
+            kind: 'ready',
+          },
+          executeOutcome: {
+            kind: 'denied',
+            protocol: 'x402',
+            response: {
+              status: 403,
+            },
+          },
+        },
+      }),
+    );
+
+    expect(loadOpenAiHarnessScenario(fixturePath)).toEqual({
+      name: 'policy-denied-budget-exceeded',
+      description: 'Governance denial scenario.',
+      targetUrl: 'https://merchant.example.com/api/reports',
+      method: 'POST',
+      expectedOutcomeKind: 'denied',
+      expectedFinalTextIncludes: ['budget', 'exceeded'],
+      mock: {
+        prepareResult: {
+          kind: 'ready',
+        },
+        executeOutcome: {
+          kind: 'denied',
+          protocol: 'x402',
+          response: {
+            status: 403,
+          },
+        },
+      },
+    });
+  });
 });

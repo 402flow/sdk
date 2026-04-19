@@ -1,6 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createToolHandlers } from './openai-tools-runtime.mjs';
+import {
+  defaultHarnessInstructions,
+  defaultHarnessToolSpecs,
+} from '../src/index.js';
+import {
+  createToolHandlers,
+  defaultInstructions,
+  defaultToolDefinitions,
+} from './openai-tools-runtime.mjs';
+
+describe('openai tools runtime defaults', () => {
+  it('reuses the SDK canonical instructions and tool descriptions', () => {
+    expect(defaultInstructions).toBe(defaultHarnessInstructions);
+    expect(defaultToolDefinitions.map((entry) => entry.name)).toEqual(
+      defaultHarnessToolSpecs.map((entry) => entry.name),
+    );
+
+    for (const spec of defaultHarnessToolSpecs) {
+      const toolDefinition = defaultToolDefinitions.find(
+        (entry) => entry.name === spec.name,
+      );
+
+      expect(toolDefinition?.description).toBe(spec.description);
+    }
+  });
+});
 
 describe('openai tools runtime prepare handler', () => {
   it('passes well-formed prepare arguments through unchanged', async () => {
