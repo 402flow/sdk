@@ -861,6 +861,40 @@ describe('AgentPayClient', () => {
     });
   });
 
+  it('parses receipt lookups that use Solana finality levels', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            receipt: {
+              ...baseReceipt,
+              receiptId: '00000000-0000-0000-0000-000000000021',
+              paidRequestId: '00000000-0000-0000-0000-000000000121',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000221',
+              finalityLevelUsed: 'solana_commitment_finalized',
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const response = await client.lookupReceipt(
+      '00000000-0000-0000-0000-000000000021',
+    );
+
+    expect(response.receipt.finalityLevelUsed).toBe('solana_commitment_finalized');
+  });
+
   it('surfaces actionable runtime token exchange errors from the control plane', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
       async () =>
@@ -933,6 +967,50 @@ describe('AgentPayClient', () => {
     expect(error.kind).toBe('denied');
     expect(error.policyReviewEventId).toBe('00000000-0000-0000-0000-000000000031');
     expect(error.reason).toBe('Policy review required.');
+  });
+
+  it('parses deny decisions that report mixed testnet and mainnet candidates', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'deny',
+            paidRequestId: '00000000-0000-0000-0000-000000000131',
+            reasonCode: 'challenge_mixed_environment_candidates',
+            reason:
+              'This merchant offered supported x402 payment candidates across both testnet and mainnet environments.',
+          }),
+          {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const error = await client
+      .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
+        challenge: baseChallenge,
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
+    }
+
+    expect(error.kind).toBe('denied');
+    expect(error.reason).toContain('both testnet and mainnet environments');
+    expect(error.decision?.outcome).toBe('deny');
+    expect(error.decision?.reasonCode).toBe(
+      'challenge_mixed_environment_candidates',
+    );
   });
 
   it('throws request_failed errors when the control plane rejects the request selectors', async () => {

@@ -67,6 +67,7 @@ export type ChainConfirmationSource = z.infer<
 
 export const chainFinalityLevelSchema = z.enum([
   'evm_block_confirmations_12',
+  'solana_commitment_finalized',
 ]);
 export type ChainFinalityLevel = z.infer<typeof chainFinalityLevelSchema>;
 
@@ -93,6 +94,7 @@ export const paidRequestReasonCodeSchema = z.enum([
   'policy_review_required',
   'challenge_candidate_malformed',
   'challenge_no_supported_candidates',
+  'challenge_mixed_environment_candidates',
   'challenge_execution_identity_unavailable',
   'challenge_execution_identity_ambiguous',
   'payment_execution_in_progress',
