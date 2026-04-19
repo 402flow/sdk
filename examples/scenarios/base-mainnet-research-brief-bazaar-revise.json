@@ -1,0 +1,12 @@
+{
+  "name": "base-mainnet-research-brief-bazaar-revise",
+  "description": "Canonical local Bazaar-driven revise scenario against the self-hosted Base mainnet merchant research brief route. Starts incomplete and relies on merchant-published challenge metadata instead of externalMetadata.",
+  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/base-mainnet",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "topic": "base mainnet receipt promotion"
+  }
+}

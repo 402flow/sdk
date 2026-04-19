@@ -31,4 +31,18 @@ describe('openai agent harness transcript path helpers', () => {
         `${scenarioRunsDir}/solana-devnet-research-brief-bazaar-revise-run-20260417T225534Z.log`,
     });
   });
+
+  it('supports timestamped artifact paths for Base research brief scenarios', () => {
+    const paths = createScenarioArtifactPaths(
+      'base-mainnet-research-brief-ready',
+      new Date('2026-04-17T22:55:34.466Z'),
+    );
+
+    expect(paths).toEqual({
+      transcriptPath:
+        `${scenarioRunsDir}/base-mainnet-research-brief-ready-run-20260417T225534Z.json`,
+      logPath:
+        `${scenarioRunsDir}/base-mainnet-research-brief-ready-run-20260417T225534Z.log`,
+    });
+  });
 });

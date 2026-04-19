@@ -1,0 +1,47 @@
+{
+  "name": "base-sepolia-research-brief-revise",
+  "description": "Canonical local agentic scenario against the self-hosted Base Sepolia merchant research brief route. Starts incomplete and is intended to exercise request revision when preparation validation is configured.",
+  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/base-sepolia",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "topic": "base sepolia receipt promotion"
+  },
+  "externalMetadata": {
+    "description": "Self-hosted research brief endpoint for the local Base Sepolia agentic proving path.",
+    "requestBodyType": "json",
+    "requestBodyExample": "{\"topic\":\"base sepolia receipt promotion\",\"audience\":\"sdk integrator\",\"format\":\"bullets\"}",
+    "requestBodyFields": [
+      {
+        "name": "topic",
+        "type": "string",
+        "required": true,
+        "description": "Topic the paid brief should cover."
+      },
+      {
+        "name": "audience",
+        "type": "string",
+        "required": true,
+        "description": "Audience for the brief. Use sdk integrator for the canonical harness run."
+      },
+      {
+        "name": "format",
+        "type": "string",
+        "required": true,
+        "description": "Output format. Use bullets for the canonical harness run."
+      },
+      {
+        "name": "constraints",
+        "type": "string[]",
+        "required": false,
+        "description": "Optional extra constraints as an array of strings."
+      }
+    ],
+    "notes": [
+      "Revise once using the requestBodyExample when validationIssues show missing required fields.",
+      "The paid merchant response echoes the final request body so request shaping is visible in the execution result."
+    ]
+  }
+}

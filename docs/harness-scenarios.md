@@ -20,13 +20,19 @@ Current named scenarios:
 
 1. `nickeljoke-compat`: public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, with `POST` as part of the contract
 2. `auor-public-holidays-reasoning-revise`: GET scenario that derives required query params from merchant hints
-3. `solana-devnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana devnet merchant research brief route
-4. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-5. `solana-devnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-6. `solana-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana mainnet merchant research brief route
-7. `solana-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-8. `solana-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-9. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
+3. `base-sepolia-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Base Sepolia merchant research brief route
+4. `base-sepolia-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+5. `base-sepolia-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+6. `base-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Base mainnet merchant research brief route
+7. `base-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+8. `base-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+9. `solana-devnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana devnet merchant research brief route
+10. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+11. `solana-devnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+12. `solana-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana mainnet merchant research brief route
+13. `solana-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+14. `solana-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+15. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
 
 ## Recommended Preset Pairings
 
@@ -34,13 +40,19 @@ Recommended pairings:
 
 1. `nickeljoke-compat` -> `ready-json-post`
 2. `auor-public-holidays-reasoning-revise` -> `revise-get-query`
-3. `solana-devnet-research-brief-bazaar-revise` -> `revise-json-post`
-4. `solana-devnet-research-brief-ready` -> `ready-json-post`
-5. `solana-devnet-research-brief-revise` -> `revise-json-post`
-6. `solana-mainnet-research-brief-bazaar-revise` -> `revise-json-post`
-7. `solana-mainnet-research-brief-ready` -> `ready-json-post`
-8. `solana-mainnet-research-brief-revise` -> `revise-json-post`
-9. `x402-org-protected-ready` -> `ready-json-post`
+3. `base-sepolia-research-brief-bazaar-revise` -> `revise-json-post`
+4. `base-sepolia-research-brief-ready` -> `ready-json-post`
+5. `base-sepolia-research-brief-revise` -> `revise-json-post`
+6. `base-mainnet-research-brief-bazaar-revise` -> `revise-json-post`
+7. `base-mainnet-research-brief-ready` -> `ready-json-post`
+8. `base-mainnet-research-brief-revise` -> `revise-json-post`
+9. `solana-devnet-research-brief-bazaar-revise` -> `revise-json-post`
+10. `solana-devnet-research-brief-ready` -> `ready-json-post`
+11. `solana-devnet-research-brief-revise` -> `revise-json-post`
+12. `solana-mainnet-research-brief-bazaar-revise` -> `revise-json-post`
+13. `solana-mainnet-research-brief-ready` -> `ready-json-post`
+14. `solana-mainnet-research-brief-revise` -> `revise-json-post`
+15. `x402-org-protected-ready` -> `ready-json-post`
 
 ## Canonical Local Agentic Path
 
@@ -52,6 +64,18 @@ http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet
 
 This is the canonical local path when request shaping should matter in a real agent loop.
 
+The matching local EVM testnet scenario path is:
+
+```text
+http://127.0.0.1:4123/demo-merchant/research-brief/base-sepolia
+```
+
+The matching local EVM mainnet scenario path is:
+
+```text
+http://127.0.0.1:4123/demo-merchant/research-brief/base-mainnet
+```
+
 The matching real-money local mainnet scenario path is:
 
 ```text
@@ -62,9 +86,9 @@ Prerequisites:
 
 1. local agent-pay infrastructure is running
 2. the local API is running, for example at `http://localhost:3001`
-3. the self-hosted Solana merchant is running via `pnpm dev:demo-merchant`
+3. the self-hosted demo merchant is running via `pnpm dev:demo-merchant`
 4. a local org and agent exist and can authenticate through the SDK
-5. one Solana devnet or Solana mainnet execution rail is enabled for that org, depending on the scenario
+5. one compatible Base or Solana execution rail is enabled for that org, depending on the scenario
 6. either `X402FLOW_BOOTSTRAP_KEY` or `X402FLOW_RUNTIME_TOKEN` is set
 
 Example local revise run:

@@ -16,6 +16,12 @@ const sdkRoot = resolve(import.meta.dirname ?? '.', '..');
 const scenarioPlan = [
   ['nickeljoke-compat', 'ready-json-post'],
   ['auor-public-holidays-reasoning-revise', 'revise-get-query'],
+  ['base-sepolia-research-brief-bazaar-revise', 'revise-json-post'],
+  ['base-sepolia-research-brief-ready', 'ready-json-post'],
+  ['base-sepolia-research-brief-revise', 'revise-json-post'],
+  ['base-mainnet-research-brief-bazaar-revise', 'revise-json-post'],
+  ['base-mainnet-research-brief-ready', 'ready-json-post'],
+  ['base-mainnet-research-brief-revise', 'revise-json-post'],
   ['solana-devnet-research-brief-bazaar-revise', 'revise-json-post'],
   ['solana-devnet-research-brief-ready', 'ready-json-post'],
   ['solana-devnet-research-brief-revise', 'revise-json-post'],

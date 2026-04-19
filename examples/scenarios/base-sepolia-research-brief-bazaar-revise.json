@@ -1,0 +1,12 @@
+{
+  "name": "base-sepolia-research-brief-bazaar-revise",
+  "description": "Canonical local Bazaar-driven revise scenario against the self-hosted Base Sepolia merchant research brief route. Starts incomplete and relies on merchant-published challenge metadata instead of externalMetadata.",
+  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/base-sepolia",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "topic": "base sepolia receipt promotion"
+  }
+}

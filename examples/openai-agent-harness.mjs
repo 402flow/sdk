@@ -31,6 +31,12 @@ const defaultPreparedTtlMs = 5 * 60 * 1000;
 const scenarioCatalog = {
   'nickeljoke-compat': './examples/scenarios/nickeljoke-compat.json',
   'auor-public-holidays-reasoning-revise': './examples/scenarios/auor-public-holidays-reasoning-revise.json',
+  'base-sepolia-research-brief-bazaar-revise': './examples/scenarios/base-sepolia-research-brief-bazaar-revise.json',
+  'base-sepolia-research-brief-ready': './examples/scenarios/base-sepolia-research-brief-ready.json',
+  'base-sepolia-research-brief-revise': './examples/scenarios/base-sepolia-research-brief-revise.json',
+  'base-mainnet-research-brief-bazaar-revise': './examples/scenarios/base-mainnet-research-brief-bazaar-revise.json',
+  'base-mainnet-research-brief-ready': './examples/scenarios/base-mainnet-research-brief-ready.json',
+  'base-mainnet-research-brief-revise': './examples/scenarios/base-mainnet-research-brief-revise.json',
   'solana-devnet-research-brief-bazaar-revise': './examples/scenarios/solana-devnet-research-brief-bazaar-revise.json',
   'solana-devnet-research-brief-ready': './examples/scenarios/solana-devnet-research-brief-ready.json',
   'solana-devnet-research-brief-revise': './examples/scenarios/solana-devnet-research-brief-revise.json',
