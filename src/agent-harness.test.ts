@@ -527,7 +527,7 @@ describe('AgentHarness', () => {
           outcome: 'deny',
           paidRequestId: baseReceipt.paidRequestId,
           reasonCode: 'policy_review_required',
-          reason: 'Manual review is required before this paid request can run.',
+          reason: 'Blocked by policy. Review event created for operator follow-up.',
           policyReviewEventId: '00000000-0000-0000-0000-000000000031',
         }),
       );
@@ -564,7 +564,7 @@ describe('AgentHarness', () => {
         status: 403,
       },
       paidRequestId: baseReceipt.paidRequestId,
-      reason: 'Manual review is required before this paid request can run.',
+      reason: 'Blocked by policy. Review event created for operator follow-up.',
       policyReviewEventId: '00000000-0000-0000-0000-000000000031',
     });
     expect(harness.getExecutionResult('prepared-denied')).toEqual({

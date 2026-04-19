@@ -430,7 +430,6 @@ export const sdkPreparedNextActionSchema = z.enum([
   'execute',
   'revise_request',
   'treat_as_passthrough',
-  'manual_review',
 ]);
 export type SdkPreparedNextAction = z.infer<
   typeof sdkPreparedNextActionSchema

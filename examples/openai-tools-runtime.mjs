@@ -1,6 +1,10 @@
 import './load-env.mjs';
 
 async function loadCanonicalHarnessMetadata() {
+  if (process.env.VITEST) {
+    return import('../src/index.ts');
+  }
+
   try {
     const distModule = await import('../dist/index.js');
 

@@ -32,7 +32,7 @@ const scenarioPlan = [
   ['x402-org-protected-ready', 'ready-json-post'],
   ['policy-denied-budget-exceeded', 'mock-governance'],
   ['policy-denied-merchant-not-allowed', 'mock-governance'],
-  ['policy-review-required', 'mock-governance'],
+  ['policy-blocked-review-event', 'mock-governance'],
   ['execution-failed-merchant-rejected', 'mock-governance'],
   ['execution-inconclusive', 'mock-governance'],
   ['preflight-failed-no-rail', 'mock-governance'],

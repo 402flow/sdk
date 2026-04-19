@@ -35,7 +35,7 @@ Current named scenarios:
 15. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
 16. `policy-denied-budget-exceeded`: mocked governance scenario that returns a budget-cap denial and expects the final answer to explain the policy block clearly
 17. `policy-denied-merchant-not-allowed`: mocked governance scenario that returns a deny-by-default merchant rejection
-18. `policy-review-required`: mocked governance scenario that returns a denial with `policyReviewEventId` and expects the final answer to surface the review requirement
+18. `policy-blocked-review-event`: mocked governance scenario that returns a denial with `policyReviewEventId` and expects the final answer to explain the policy block and surface the review event
 19. `execution-failed-merchant-rejected`: mocked governance scenario that returns a post-payment merchant rejection
 20. `execution-inconclusive`: mocked governance scenario that returns an honest inconclusive outcome
 21. `preflight-failed-no-rail`: mocked governance scenario that returns a missing-payment-rail failure before execution can succeed
@@ -61,7 +61,7 @@ Recommended pairings:
 15. `x402-org-protected-ready` -> `ready-json-post`
 16. `policy-denied-budget-exceeded` -> `mock-governance`
 17. `policy-denied-merchant-not-allowed` -> `mock-governance`
-18. `policy-review-required` -> `mock-governance`
+18. `policy-blocked-review-event` -> `mock-governance`
 19. `execution-failed-merchant-rejected` -> `mock-governance`
 20. `execution-inconclusive` -> `mock-governance`
 21. `preflight-failed-no-rail` -> `mock-governance`

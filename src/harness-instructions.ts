@@ -23,7 +23,6 @@ export const defaultHarnessToolSpecs: HarnessToolSpec[] = [
       '- "execute": the request is ready to pay. Call execute_prepared_request with the returned preparedId.',
       '- "revise_request": the request is incomplete. Inspect validationIssues and hints to determine what is missing. If the task provides enough information, fix the request and call prepare_paid_request again. Otherwise stop and explain what is still missing.',
       '- "treat_as_passthrough": the merchant does not require payment. Do not pay. Explain that paid execution is not required.',
-      '- "manual_review": the request needs human review. Do not execute.',
       '',
       'Do not call execute_prepared_request unless nextAction is "execute".',
       'Do not invent missing business parameters.',

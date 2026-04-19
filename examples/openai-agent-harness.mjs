@@ -47,7 +47,7 @@ const scenarioCatalog = {
   'x402-org-protected-ready': './examples/scenarios/x402-org-protected-ready.json',
   'policy-denied-budget-exceeded': './examples/scenarios/policy-denied-budget-exceeded.json',
   'policy-denied-merchant-not-allowed': './examples/scenarios/policy-denied-merchant-not-allowed.json',
-  'policy-review-required': './examples/scenarios/policy-review-required.json',
+  'policy-blocked-review-event': './examples/scenarios/policy-blocked-review-event.json',
   'execution-failed-merchant-rejected': './examples/scenarios/execution-failed-merchant-rejected.json',
   'execution-inconclusive': './examples/scenarios/execution-inconclusive.json',
   'preflight-failed-no-rail': './examples/scenarios/preflight-failed-no-rail.json',
