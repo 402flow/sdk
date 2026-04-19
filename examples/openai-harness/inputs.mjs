@@ -13,6 +13,24 @@ function isStringRecord(value) {
   return Object.values(value).every((entry) => typeof entry === 'string');
 }
 
+function isStringArray(value) {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+const supportedScenarioOutcomeKinds = new Set([
+  'success',
+  'denied',
+  'execution_pending',
+  'execution_inconclusive',
+  'execution_failed',
+  'preflight_failed',
+  'paid_fulfillment_failed',
+]);
+
+function validateScenarioMock(value) {
+  return isRecord(value) && isRecord(value.prepareResult) && isRecord(value.executeOutcome);
+}
+
 function parseJsonValue(rawValue, label) {
   try {
     return JSON.parse(rawValue);
@@ -86,6 +104,25 @@ export function loadOpenAiHarnessScenario(filePath) {
     throw new Error('Scenario file headers must be an object of string values.');
   }
 
+  if (
+    parsedValue.expectedOutcomeKind !== undefined
+    && (typeof parsedValue.expectedOutcomeKind !== 'string'
+      || !supportedScenarioOutcomeKinds.has(parsedValue.expectedOutcomeKind))
+  ) {
+    throw new Error('Scenario file expectedOutcomeKind must be a supported outcome string when provided.');
+  }
+
+  if (
+    parsedValue.expectedFinalTextIncludes !== undefined
+    && !isStringArray(parsedValue.expectedFinalTextIncludes)
+  ) {
+    throw new Error('Scenario file expectedFinalTextIncludes must be an array of strings when provided.');
+  }
+
+  if (parsedValue.mock !== undefined && !validateScenarioMock(parsedValue.mock)) {
+    throw new Error('Scenario file mock must contain object prepareResult and executeOutcome fields.');
+  }
+
   return {
     name: parsedValue.name,
     description: parsedValue.description,
@@ -99,5 +136,12 @@ export function loadOpenAiHarnessScenario(filePath) {
     ...(parsedValue.externalMetadata !== undefined
       ? { externalMetadata: parsedValue.externalMetadata }
       : {}),
+    ...(parsedValue.expectedOutcomeKind !== undefined
+      ? { expectedOutcomeKind: parsedValue.expectedOutcomeKind }
+      : {}),
+    ...(parsedValue.expectedFinalTextIncludes !== undefined
+      ? { expectedFinalTextIncludes: parsedValue.expectedFinalTextIncludes }
+      : {}),
+    ...(parsedValue.mock !== undefined ? { mock: parsedValue.mock } : {}),
   };
 }

@@ -14,6 +14,7 @@ import {
   loadJsonPromptValue,
   loadOpenAiHarnessScenario,
 } from './openai-harness/inputs.mjs';
+import { createMockClient } from './openai-harness/mock-client.mjs';
 import { defaultTranscriptFileForScenario } from './openai-harness/transcript-paths.mjs';
 import {
   createClientFromEnv,
@@ -44,6 +45,12 @@ const scenarioCatalog = {
   'solana-mainnet-research-brief-ready': './examples/scenarios/solana-mainnet-research-brief-ready.json',
   'solana-mainnet-research-brief-revise': './examples/scenarios/solana-mainnet-research-brief-revise.json',
   'x402-org-protected-ready': './examples/scenarios/x402-org-protected-ready.json',
+  'policy-denied-budget-exceeded': './examples/scenarios/policy-denied-budget-exceeded.json',
+  'policy-denied-merchant-not-allowed': './examples/scenarios/policy-denied-merchant-not-allowed.json',
+  'policy-review-required': './examples/scenarios/policy-review-required.json',
+  'execution-failed-merchant-rejected': './examples/scenarios/execution-failed-merchant-rejected.json',
+  'execution-inconclusive': './examples/scenarios/execution-inconclusive.json',
+  'preflight-failed-no-rail': './examples/scenarios/preflight-failed-no-rail.json',
 };
 
 function stringifyDefaultJson(value) {
@@ -118,15 +125,7 @@ const promptPresets = {
           body,
           externalMetadata,
         }),
-        !externalMetadata
-          ? 'Do not invent externalMetadata beyond what is explicitly provided.'
-          : undefined,
-        'Treat externalMetadata as advisory when merchant challenge hints disagree.',
-        'Inspect challengeDetails when present for merchant resource metadata and extension-published discovery data before deciding whether to revise or execute.',
-        'If preparation returns nextAction as treat_as_passthrough, do not pay and explain that paid execution is not required.',
-        'If preparation returns nextAction as revise_request, revise only when the task provides enough information; otherwise stop and explain what is still missing.',
-        'Execute only if preparation returns nextAction as execute.',
-        'After execution, call get_execution_result and summarize the stored result.',
+        'Execute if ready; if hints show the request is incomplete and the task provides enough information, revise once; otherwise explain what is still missing.',
       ]
         .filter(Boolean)
         .join(' ');
@@ -173,13 +172,7 @@ const promptPresets = {
           body,
           externalMetadata,
         }),
-        'Treat externalMetadata as advisory when merchant challenge hints disagree.',
-        'Inspect challengeDetails when present for merchant resource metadata and extension-published discovery data before deciding whether to revise or execute.',
-        'If preparation returns nextAction as treat_as_passthrough, do not pay and explain that paid execution is not required.',
-        'If preparation returns nextAction as revise_request, revise the request once using validationIssues, hints, and challengeDetails.extensions when present only when the task provides enough information; otherwise stop and explain what is still missing.',
-        'If preparation returns nextAction as execute but hints still describe missing required body fields, revise once using hints.requestBodyExample (or externalMetadata.requestBodyExample when provided) only when the task provides enough information; otherwise stop and explain what is still missing.',
-        'Do not execute the same prepared request twice unless the caller explicitly asks for a retry.',
-        'After execution, call get_execution_result and summarize the stored result.',
+        'Execute if ready; revise once if hints or externalMetadata provide enough information to complete the required body fields; otherwise explain what is still missing.',
       ].join(' ');
     },
   },
@@ -202,16 +195,10 @@ const promptPresets = {
       return [
         task ?? 'Fetch data from a paid API.',
         `Use the Auor-compatible endpoint at ${url}.`,
-        'First, call prepare_paid_request with method GET and the bare URL (no query params).',
-        'If preparation returns nextAction as treat_as_passthrough, do not pay and explain that paid execution is not required.',
-        'If preparation returns nextAction as revise_request, inspect validationIssues, hints.requestQueryParams, and challengeDetails.extensions when present to determine what query parameters are required.',
-        'Reason about the correct values for each required parameter based on the task above only when the task provides enough information; otherwise stop and explain what is still missing.',
-        'If you do revise the URL, call prepare_paid_request again with those query params appended to the URL.',
-        'Execute only after the revised preparation returns nextAction as execute.',
-        'After execution, call get_execution_result and summarize the stored result.',
-        !externalMetadata
-          ? 'Do not invent externalMetadata — all hints come from the merchant challenge.'
-          : 'Treat externalMetadata as advisory when merchant challenge hints disagree.',
+        ...(externalMetadata
+          ? [`Use this externalMetadata during preparation: ${externalMetadata}.`]
+          : []),
+        'Start with method GET and the bare URL with no query params. If required query parameters are missing, derive them from the business task above, revise once, and execute if ready; otherwise explain what is still missing.',
       ]
         .filter(Boolean)
         .join(' ');
@@ -258,6 +245,39 @@ const promptPresets = {
         'Treat externalMetadata as advisory when merchant challenge hints disagree.',
         'Call prepare_paid_request exactly once, do not execute, and explain the resulting nextAction, challengeDetails, validationIssues, and whether the caller should revise, treat the request as passthrough, or stop because required business inputs are still missing.',
       ].join(' ');
+    },
+  },
+  'mock-governance': {
+    description:
+      'Attempt a paid request against a mocked governance outcome and explain denials or failures honestly.',
+    buildPrompt(context) {
+      const url = context.scenario?.targetUrl ?? getRequiredEnv('AGENT_HARNESS_TARGET_URL');
+      const method = context.scenario?.method ?? 'POST';
+      const headers = loadJsonPromptValue({
+        label: 'headers',
+        inlineValue: process.env.AGENT_HARNESS_HEADERS_JSON,
+        filePath: process.env.AGENT_HARNESS_HEADERS_FILE,
+        defaultValue: stringifyDefaultJson(context.scenario?.headers),
+      });
+      const body = loadJsonPromptValue({
+        label: 'body',
+        inlineValue: process.env.AGENT_HARNESS_BODY_JSON,
+        filePath: process.env.AGENT_HARNESS_BODY_FILE,
+        defaultValue: stringifyDefaultJson(context.scenario?.body),
+      });
+
+      return [
+        'Attempt a paid HTTP request through 402flow.',
+        ...buildPromptRequestLines({
+          method,
+          url,
+          headers,
+          body,
+        }),
+        'Execute if preparation says the request is ready. After execution, call get_execution_result and summarize the outcome. If the request is denied, failed, or inconclusive, explain clearly what happened and what the operator should do next.',
+      ]
+        .filter(Boolean)
+        .join(' ');
     },
   },
 };
@@ -451,11 +471,13 @@ async function runHarnessSession({
   model,
   maxTurns,
   preparedTtlMs,
-  scenario,
+  scenarioDefinition,
 }) {
   const apiKey = getRequiredEnv('OPENAI_API_KEY');
   const openai = createOpenAiClient(apiKey);
-  const client = await createClientFromEnv('harness');
+  const client = scenarioDefinition?.mock
+    ? createMockClient(scenarioDefinition.mock)
+    : await createClientFromEnv('harness');
   const harness = new AgentHarness({
     client,
     preparedTtlMs,
@@ -464,7 +486,7 @@ async function runHarnessSession({
   const instructions = defaultInstructions;
   let transcript = createOpenAiHarnessTranscript({
     preset,
-    scenario,
+    scenario: scenarioDefinition?.name,
     model,
     prompt,
     maxTurns,
@@ -572,7 +594,7 @@ async function main() {
     ...args,
     prompt,
     preset: args.preset,
-    scenario: promptResolution?.scenario?.name,
+    scenarioDefinition: promptResolution?.scenario,
   });
 
   if (transcriptFile) {

@@ -116,6 +116,7 @@ export type AgentHarnessPreparedSummary = {
   state: 'active';
   kind: SdkPreparedPaidRequest['kind'];
   protocol: SdkPreparedPaidRequest['protocol'];
+  costSummary?: string;
   challengeDetails?: SdkPreparedChallengeDetails;
   paymentRequirement?: SdkPreparedPaymentRequirement;
   hints: SdkPreparedRequestHints;
@@ -279,14 +280,138 @@ function buildExecutionBinding(
   });
 }
 
+const knownNetworkLabels: Record<string, string> = {
+  'eip155:84532': 'Base Sepolia',
+  'base-sepolia': 'Base Sepolia',
+  'eip155:8453': 'Base',
+  base: 'Base',
+  'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1': 'Solana Devnet',
+  'solana-devnet': 'Solana Devnet',
+  'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp': 'Solana',
+  'solana-mainnet': 'Solana',
+};
+
+const knownAssetMetadata: Record<string, { name: string; precision: number }> = {
+  '0x036cbd53842c5426634e7929541ec2318f3dcf7e': {
+    name: 'USDC',
+    precision: 6,
+  },
+  '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': {
+    name: 'USDC',
+    precision: 6,
+  },
+  '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU': {
+    name: 'USDC',
+    precision: 6,
+  },
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: {
+    name: 'USDC',
+    precision: 6,
+  },
+};
+
+function normalizeAssetLookupKey(asset: string) {
+  return asset.startsWith('0x') ? asset.toLowerCase() : asset;
+}
+
+function formatMinorAmount(amountMinor: string, precision: number) {
+  const normalizedMinor = amountMinor.replace(/^0+(?=\d)/, '') || '0';
+
+  if (precision === 0) {
+    return normalizedMinor;
+  }
+
+  const paddedMinor = normalizedMinor.padStart(precision + 1, '0');
+  const wholePart = paddedMinor.slice(0, -precision) || '0';
+  const fractionalPart = paddedMinor.slice(-precision);
+
+  return `${wholePart}.${fractionalPart}`;
+}
+
+function getChallengeAssetName(challengeDetails: SdkPreparedChallengeDetails | undefined) {
+  const extra = challengeDetails?.accepts[0]?.extra;
+
+  if (!extra || typeof extra !== 'object') {
+    return undefined;
+  }
+
+  const name = extra.name;
+  return typeof name === 'string' && name.length > 0 ? name : undefined;
+}
+
+function getChallengePrecision(challengeDetails: SdkPreparedChallengeDetails | undefined) {
+  const extra = challengeDetails?.accepts[0]?.extra;
+
+  if (!extra || typeof extra !== 'object') {
+    return undefined;
+  }
+
+  const precision = extra.precision;
+  return typeof precision === 'number' && Number.isInteger(precision) ? precision : undefined;
+}
+
+function getAmountTypeLabel(amountType: SdkPreparedPaymentRequirement['amountType']) {
+  if (amountType === 'exact') {
+    return 'exact';
+  }
+
+  if (amountType === 'max') {
+    return 'up to';
+  }
+
+  return undefined;
+}
+
+function buildCostSummary(prepared: SdkPreparedPaidRequest) {
+  if (prepared.kind === 'passthrough') {
+    return 'No payment required.';
+  }
+
+  const paymentRequirement = prepared.paymentRequirement;
+
+  if (!paymentRequirement) {
+    return undefined;
+  }
+
+  const knownAsset = paymentRequirement.asset
+    ? knownAssetMetadata[normalizeAssetLookupKey(paymentRequirement.asset)]
+    : undefined;
+  const resolvedPrecision = paymentRequirement.precision
+    ?? getChallengePrecision(prepared.challengeDetails)
+    ?? knownAsset?.precision;
+
+  const amount = paymentRequirement.amount
+    ?? (paymentRequirement.amountMinor !== undefined && resolvedPrecision !== undefined
+      ? formatMinorAmount(paymentRequirement.amountMinor, resolvedPrecision)
+      : undefined);
+  const assetName = getChallengeAssetName(prepared.challengeDetails)
+    ?? (paymentRequirement.asset
+      ? knownAsset?.name
+        ?? paymentRequirement.asset
+      : undefined);
+  const networkLabel = paymentRequirement.network
+    ? knownNetworkLabels[paymentRequirement.network] ?? paymentRequirement.network
+    : undefined;
+  const amountTypeLabel = getAmountTypeLabel(paymentRequirement.amountType);
+
+  if (!amount || !assetName || !networkLabel || !amountTypeLabel) {
+    return undefined;
+  }
+
+  return `Costs ${amount} ${assetName} on ${networkLabel} (${amountTypeLabel}).`;
+}
+
 function summarizePreparedRecord(
   record: StoredPreparedRecord,
 ): AgentHarnessPreparedSummary {
+  const costSummary = buildCostSummary(record.prepared);
+
   return cloneValue({
     preparedId: record.preparedId,
     state: 'active' as const,
     kind: record.prepared.kind,
     protocol: record.prepared.protocol,
+    ...(costSummary ? { costSummary } : {}),
     ...(record.prepared.kind === 'ready' && record.prepared.challengeDetails
       ? { challengeDetails: record.prepared.challengeDetails }
       : {}),

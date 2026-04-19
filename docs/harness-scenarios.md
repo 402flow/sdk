@@ -33,6 +33,12 @@ Current named scenarios:
 13. `solana-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
 14. `solana-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
 15. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
+16. `policy-denied-budget-exceeded`: mocked governance scenario that returns a budget-cap denial and expects the final answer to explain the policy block clearly
+17. `policy-denied-merchant-not-allowed`: mocked governance scenario that returns a deny-by-default merchant rejection
+18. `policy-review-required`: mocked governance scenario that returns a denial with `policyReviewEventId` and expects the final answer to surface the review requirement
+19. `execution-failed-merchant-rejected`: mocked governance scenario that returns a post-payment merchant rejection
+20. `execution-inconclusive`: mocked governance scenario that returns an honest inconclusive outcome
+21. `preflight-failed-no-rail`: mocked governance scenario that returns a missing-payment-rail failure before execution can succeed
 
 ## Recommended Preset Pairings
 
@@ -53,6 +59,24 @@ Recommended pairings:
 13. `solana-mainnet-research-brief-ready` -> `ready-json-post`
 14. `solana-mainnet-research-brief-revise` -> `revise-json-post`
 15. `x402-org-protected-ready` -> `ready-json-post`
+16. `policy-denied-budget-exceeded` -> `mock-governance`
+17. `policy-denied-merchant-not-allowed` -> `mock-governance`
+18. `policy-review-required` -> `mock-governance`
+19. `execution-failed-merchant-rejected` -> `mock-governance`
+20. `execution-inconclusive` -> `mock-governance`
+21. `preflight-failed-no-rail` -> `mock-governance`
+
+## Governance Fixtures
+
+The six governance scenarios are fixture-driven and use the mock client path inside the harness example.
+
+That means:
+
+1. they still exercise the normal `prepare_paid_request` -> `execute_prepared_request` -> `get_execution_result` loop
+2. they still rely on the same `AgentHarness` summarization path as real executions
+3. they do not require a live 402flow API server to produce denials, preflight failures, or inconclusive outcomes
+
+They are useful for checking whether the model reports non-success outcomes honestly instead of defaulting to happy-path language.
 
 ## Canonical Local Agentic Path
 
@@ -114,6 +138,18 @@ Expected outcomes:
 2. after one revision, the scenario should prepare as `execute`
 3. paid execution should return a deterministic JSON body that echoes the accepted brief input and output sections
 4. `get_execution_result` should return the same stored result after execution
+
+## Challenge Details Status
+
+Default surface slimming is still deferred.
+
+`hints` is the preferred request-shaping surface, but the current host-facing prepare result still includes `challengeDetails`, and that is intentional while Bazaar revise coverage remains the proof point for whether `challengeDetails.extensions` can be hidden safely.
+
+For now:
+
+1. treat `hints` as the primary revise surface
+2. treat `challengeDetails` as still available for richer merchant-published discovery data
+3. do not assume the default agent-facing surface has been reduced yet
 
 The same readiness rule applies here as everywhere else:
 

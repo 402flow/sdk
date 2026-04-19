@@ -27,7 +27,7 @@ The SDK has one core client, `AgentPayClient`, and three main calls:
 Use `fetchPaid(...)` for the simplest direct path.
 Use `preparePaidRequest(...)` plus `executePreparedRequest(...)` when the caller needs an explicit inspect, revise, then execute loop.
 
-The package also includes `AgentHarness`, an optional preparedId-based wrapper for tool hosts. It is a convenience layer on top of `AgentPayClient`, not part of the core client API.
+The package also includes `AgentHarness`, an optional preparedId-based wrapper for tool hosts. That host-facing wrapper adds a human-readable `costSummary` on prepared results and ships canonical `defaultHarnessInstructions` plus `defaultHarnessToolSpecs` exports so adapters can reuse the same orchestration contract.
 
 ## Runtime Notes
 
@@ -130,79 +130,25 @@ try {
 
 If the merchant does not require payment for that exact request, the SDK returns a passthrough response. If the merchant returns a payable challenge, the SDK resolves payment through the control plane and returns a durable paid outcome.
 
-`result.response` is the merchant HTTP response body, so its JSON shape is merchant-defined. SDK-owned paid metadata such as `paidRequestId`, `paymentAttemptId`, `receiptId`, and `receipt` stays on the returned SDK result rather than being injected into the merchant JSON body.
+`result.response` is always the merchant HTTP response. SDK-owned payment metadata such as `paidRequestId`, `paymentAttemptId`, `receiptId`, and `receipt` stays on the SDK result instead of being injected into the merchant JSON body.
 
-This means x402 and the SDK give you a stable place for the paid merchant response, but not a universal merchant-independent field name for the fulfilled content itself.
+### Interpreting Merchant Responses
 
-For the planned 402flow demo merchant specifically:
+The SDK gives you a stable place for payment metadata, but it does not invent a universal fulfilled-response schema for merchant content.
 
-1. simulated paid content lives under `merchantBody.content`
-2. debugging payment summary fields live under `merchantBody.payment`
-3. echoed accepted request input lives under `merchantBody.request`
-
-### How Agents Know What They Paid For
-
-Practically, an agent should treat the merchant response in three layers:
+In practice:
 
 1. the SDK result carries durable payment metadata such as `receiptId` and `receipt`
 2. `result.response` carries the merchant fulfillment payload
-3. the merchant contract decides where the useful paid content lives inside that fulfillment payload
+3. the merchant contract decides where the useful paid content lives inside that payload
 
-For the 402flow demo merchant, the rule is simple:
+If you need request-shape guidance before execution, use `preparePaidRequest()` and inspect:
 
-1. read `merchantBody.content` for the simulated paid content
-2. read `merchantBody.payment` for debugging-oriented payment summary fields
-3. read `merchantBody.request` for the echoed accepted request shape
+1. `prepared.hints` for authoritative request fields, examples, notes, and query/body guidance when the challenge publishes them
+2. `prepared.challengeDetails` for raw merchant challenge data such as resource metadata, accepted payment candidates, and extensions like Bazaar discovery metadata
+3. optional caller-supplied `externalMetadata` as advisory context only
 
-For arbitrary merchants, there is no x402-level guarantee that paid content lives under `content`, `data`, `result`, or any other universal field. The agent needs one of these sources of truth:
-
-1. parsed merchant challenge details from `prepared.challengeDetails` when the merchant publishes discovery data in the x402 challenge
-2. merchant-authoritative preparation hints from `prepared.hints`
-3. the merchant's out-of-band documented response contract
-4. caller-supplied `externalMetadata` when the caller already knows the endpoint schema
-
-Important distinction:
-
-1. today, merchant challenge metadata can give the SDK authoritative request-shape hints such as body type, body fields, query params, examples, and notes
-2. today, it does not give the SDK a universal fulfilled-response schema for where paid content will live in the merchant response body
-
-In other words:
-
-1. x402 tells the system how to pay
-2. the SDK preserves the resulting merchant response body
-3. the merchant contract tells the agent how to interpret that body
-
-If an agent does not have enough contract information to interpret the returned merchant body safely, it should not invent a payload shape. It should surface the raw merchant body and explain what contract detail is still missing.
-
-### What The Agent Can See During Preparation
-
-Yes, the agent can get merchant-authoritative request-shape hints when the merchant challenge includes them and the host uses `preparePaidRequest()`.
-
-The SDK also exposes a parsed challenge summary on ready preparations:
-
-1. `prepared.challengeDetails.resource` for spec-level resource metadata like `url`, `description`, and `mimeType`
-2. `prepared.challengeDetails.accepts` for the full advertised payment candidates, not just the normalized primary requirement
-3. `prepared.challengeDetails.extensions` for merchant-published extensions such as Bazaar discovery metadata
-
-Those hints are returned on `prepared.hints` and can include:
-
-1. `requestBodyType`
-2. `requestBodyExample`
-3. `requestBodyFields`
-4. `requestQueryParams`
-5. `requestPathParams`
-6. `notes`
-
-Each hint includes attribution so the agent can tell whether it came from:
-
-1. `merchant_challenge` with authoritative status
-2. `external_metadata` with advisory status
-
-So, practically:
-
-1. if you want the agent to see merchant-provided request-shape guidance, use `preparePaidRequest()` and pass both `prepared.challengeDetails` and `prepared.hints` through your host flow
-2. if the merchant publishes Bazaar discovery data, the host or agent can inspect `prepared.challengeDetails.extensions?.bazaar` for input and output examples straight from the challenge
-3. if you want the agent to know where fulfilled paid content lives in the final merchant response, that still needs a merchant-specific contract such as docs, host knowledge, or a convention like the demo merchant's `content` field
+If you do not have enough contract information to interpret a merchant response safely, return the raw merchant body and explain what is still missing instead of inventing a payload shape.
 
 ## Preparation Flow
 
@@ -333,7 +279,7 @@ The preparation result distinguishes four important things:
 1. `paymentRequirement`: normalized payment terms derived from the merchant challenge when available
 2. `hints`: request-shape hints such as body fields, query params, path params, descriptions, examples, and notes
 3. `validationIssues`: structured remediation diagnostics derived from the current request and defensible preparation inputs
-4. `nextAction`: a narrow action summary such as `execute`, `revise_request`, or `treat_as_passthrough`
+4. `nextAction`: the authoritative machine contract for what to do next, such as `execute`, `revise_request`, or `treat_as_passthrough`
 
 Each prepared hint carries `attribution` so callers can distinguish live merchant-authoritative data from advisory caller-supplied metadata.
 
@@ -372,22 +318,33 @@ const receipt = await client.lookupReceipt('receipt-id');
 console.log(receipt.receipt.status);
 ```
 
-## Minimal Agent Integration Contract
+## Canonical Host Metadata
 
-Most agent frameworks only need a small orchestration policy:
+If you are building a tool host, do not copy orchestration rules into ad hoc prompts. Import the canonical host-agnostic metadata from the SDK and adapt it to your model provider.
 
-```text
-When using @402flow/sdk:
-- Always prepare a paid request before executing it.
-- Execute only when preparation returns nextAction as execute.
-- If preparation returns treat_as_passthrough, do not pay and explain that paid execution is not required.
-- If preparation returns revise_request, use validationIssues and hints to revise only when the task provides enough information; otherwise stop and explain what is still missing.
-- Use externalMetadata only when the caller already has it from another system, and treat it as advisory when merchant-challenge hints disagree.
-- Do not invent missing business parameters or execute the same prepared request twice unless the caller explicitly asks for a retry.
-- After execution, read the stored execution result and report denied, pending, failed, or inconclusive outcomes clearly.
+```ts
+import {
+  defaultHarnessInstructions,
+  defaultHarnessToolSpecs,
+} from '@402flow/sdk';
+
+console.log(defaultHarnessInstructions);
+console.log(defaultHarnessToolSpecs);
 ```
 
-That is the portable core SDK story. It should work across OpenAI, Claude, LangGraph, MCP, or custom workflows without requiring host-specific packaging in the SDK contract itself.
+`defaultHarnessToolSpecs` defines the canonical three-tool contract:
+
+1. `prepare_paid_request`
+2. `execute_prepared_request`
+3. `get_execution_result`
+
+Those descriptions encode the orchestration rules, including:
+
+1. `nextAction` is authoritative
+2. execute only after `nextAction === 'execute'`
+3. read the stored execution result before summarizing the outcome
+
+Keep provider-specific tool objects in your host adapter, not in the SDK core package.
 
 ## Tiny OpenAI Tools Host
 
@@ -399,7 +356,8 @@ It keeps the host story narrow:
 
 1. create an `AgentPayClient`
 2. wrap it with optional `AgentHarness` so tool calls can pass `preparedId`
-3. expose `prepare_paid_request`, `execute_prepared_request`, and `get_execution_result`
+3. build provider-specific tool objects from `defaultHarnessToolSpecs`
+4. expose `prepare_paid_request`, `execute_prepared_request`, and `get_execution_result`
 
 Run it with one prompt. Either populate `.env` from `.env.example`, or export the same values in your shell for a one-off run:
 
@@ -420,6 +378,14 @@ Use this when you want the shortest real host integration path. Use the full eva
 ## Optional `AgentHarness`
 
 `AgentHarness` is an optional preparedId-based wrapper for tool hosts that do not want to manage in-flight prepared request objects themselves. It is a convenience layer on top of `AgentPayClient`, not a required abstraction.
+
+Key behavior:
+
+1. preparations are stored in memory behind a `preparedId`
+2. a newer active preparation for the same method plus origin plus pathname supersedes the older one
+3. duplicate execute calls for the same consumed `preparedId` are rejected locally as already consumed
+4. hosts should call `getExecutionResult(preparedId)` after execution to read the durable stored outcome
+5. host-facing prepare results include `costSummary`, for example `Costs 0.001000 USDC on Base Sepolia (exact).`
 
 For harness usage, presets, transcripts, and scenario packs, see:
 

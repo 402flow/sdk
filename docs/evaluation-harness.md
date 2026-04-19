@@ -47,7 +47,14 @@ The OpenAI example exposes exactly three model-callable tools:
 2. `execute_prepared_request`
 3. `get_execution_result`
 
-The intended host policy is:
+Those tool definitions are not maintained as OpenAI-only prompt text. The example runtime imports the canonical host-agnostic metadata exported by the SDK:
+
+1. `defaultHarnessInstructions`
+2. `defaultHarnessToolSpecs`
+
+That keeps the orchestration contract in one place while still letting each host adapter build provider-specific tool objects.
+
+At a high level, the canonical contract is:
 
 1. always prepare a request before any paid execution
 2. execute only when preparation returns `nextAction: execute`
@@ -56,6 +63,39 @@ The intended host policy is:
 5. use `externalMetadata` only when the caller already has endpoint metadata, and treat it as advisory when merchant challenge hints disagree
 6. do not invent missing business parameters or execute the same prepared request twice unless the caller explicitly asks for a retry
 7. after execution, read the stored execution result and report denied, pending, failed, or inconclusive outcomes clearly
+
+The OpenAI example follows that contract by returning the harness prepare result directly from the tool handler, then requiring the model to call `get_execution_result` before summarizing the outcome.
+
+## Prepared Surface
+
+Today, the host-facing prepare result returned by `AgentHarness` includes:
+
+1. `preparedId`
+2. `costSummary`
+3. `challengeDetails`
+4. `paymentRequirement`
+5. `hints`
+6. `validationIssues`
+7. `nextAction`
+
+`costSummary` is the human-readable payment summary intended for agent-facing use.
+
+`challengeDetails` and `paymentRequirement` are still surfaced by default. That is intentional for now. Bazaar-style revise scenarios still validate the current merchant-challenge path, and the SDK has not yet proven that `hints` alone fully replaces every useful piece of `challengeDetails.extensions` in agent-facing flows.
+
+So the current rule is:
+
+1. prefer `hints` as the main revise surface
+2. keep `challengeDetails` visible by default until revise coverage proves it is safe to hide
+
+## Duplicate Execute Semantics
+
+`AgentHarness` keeps prepare state in memory behind `preparedId`.
+
+Important behavior:
+
+1. a newer active preparation for the same method plus origin plus pathname supersedes the older one
+2. duplicate execute calls for a consumed `preparedId` return a stable harness-local rejection instead of creating another payment attempt implicitly
+3. hosts should prepare again if they want an explicit retry path
 
 ## Environment
 
@@ -126,6 +166,7 @@ Built-in prompt presets:
 2. `revise-json-post`: prepare a JSON POST request, revise once if validation issues require it, then execute only after the revised request is ready
 3. `revise-get-query`: start with a bare GET URL, derive required query params from preparation hints, revise once, then execute
 4. `inspect-only`: prepare once and stop after summarizing `nextAction` and `validationIssues`
+5. `mock-governance`: run the normal prepare, execute, and get-result loop against fixture-driven mocked governance outcomes such as denials, preflight failures, and inconclusive execution
 
 For JSON-backed preset inputs, use either the inline `*_JSON` env var or the file-backed `*_FILE` env var for a given input, not both.
 

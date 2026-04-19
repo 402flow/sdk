@@ -1862,5 +1862,6 @@ export function createAgentPayClient(options: AgentPayClientOptions) {
 
 export * from './agent-harness.js';
 export * from './contracts.js';
+export * from './harness-instructions.js';
 export { detectChallengeFromResponse, type DetectedChallenge } from './challenge-detection.js';
 export { sdkClientVersion, sdkClientVersionHeaderName } from './version.js';

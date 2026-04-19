@@ -1,0 +1,98 @@
+{
+  "name": "policy-denied-merchant-not-allowed",
+  "description": "Mock governance scenario where an unknown merchant is denied by workspace policy.",
+  "targetUrl": "https://merchant.example.com/api/secret-reports",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "reportType": "secret",
+    "format": "json"
+  },
+  "expectedOutcomeKind": "denied",
+  "expectedFinalTextIncludes": ["not allowed", "policy"],
+  "mock": {
+    "prepareResult": {
+      "kind": "ready",
+      "protocol": "x402",
+      "request": {
+        "url": "https://merchant.example.com/api/secret-reports",
+        "method": "POST",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"reportType\":\"secret\",\"format\":\"json\"}"
+      },
+      "challenge": {
+        "protocol": "x402",
+        "headers": {}
+      },
+      "challengeDetails": {
+        "x402Version": 2,
+        "resource": {
+          "url": "https://merchant.example.com/api/secret-reports",
+          "description": "Restricted reports API"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "amount": "25000",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "payTo": "0xabc123",
+            "extra": {
+              "name": "USDC"
+            }
+          }
+        ]
+      },
+      "paymentRequirement": {
+        "protocol": "x402",
+        "description": "Restricted reports API",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "network": "eip155:84532",
+        "amountType": "exact",
+        "amountMinor": "25000",
+        "amount": "0.025000",
+        "precision": 6,
+        "provenance": {
+          "source": "merchant_challenge",
+          "authority": "authoritative"
+        }
+      },
+      "hints": {
+        "requestBodyFields": [],
+        "requestQueryParams": [],
+        "requestPathParams": [],
+        "notes": []
+      },
+      "validationIssues": [],
+      "nextAction": "execute"
+    },
+    "executeOutcome": {
+      "kind": "denied",
+      "protocol": "x402",
+      "response": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "outcome": "deny",
+          "paidRequestId": "00000000-0000-0000-0000-000000000402",
+          "reasonCode": "policy_denied",
+          "reason": "Policy denied: this merchant is not allowed by the current workspace policy."
+        }
+      },
+      "paidRequestId": "00000000-0000-0000-0000-000000000402",
+      "reason": "Policy denied: this merchant is not allowed by the current workspace policy.",
+      "decision": {
+        "outcome": "deny",
+        "paidRequestId": "00000000-0000-0000-0000-000000000402",
+        "reasonCode": "policy_denied",
+        "reason": "Policy denied: this merchant is not allowed by the current workspace policy."
+      }
+    }
+  }
+}

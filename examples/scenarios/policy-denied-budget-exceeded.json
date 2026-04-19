@@ -1,0 +1,98 @@
+{
+  "name": "policy-denied-budget-exceeded",
+  "description": "Mock governance scenario where a paid request is denied because the workspace monthly budget is exceeded.",
+  "targetUrl": "https://merchant.example.com/api/reports",
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": {
+    "reportType": "spend-summary",
+    "format": "json"
+  },
+  "expectedOutcomeKind": "denied",
+  "expectedFinalTextIncludes": ["budget", "exceeded"],
+  "mock": {
+    "prepareResult": {
+      "kind": "ready",
+      "protocol": "x402",
+      "request": {
+        "url": "https://merchant.example.com/api/reports",
+        "method": "POST",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"reportType\":\"spend-summary\",\"format\":\"json\"}"
+      },
+      "challenge": {
+        "protocol": "x402",
+        "headers": {}
+      },
+      "challengeDetails": {
+        "x402Version": 2,
+        "resource": {
+          "url": "https://merchant.example.com/api/reports",
+          "description": "Business reports API"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "amount": "100000",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "payTo": "0xabc123",
+            "extra": {
+              "name": "USDC"
+            }
+          }
+        ]
+      },
+      "paymentRequirement": {
+        "protocol": "x402",
+        "description": "Business reports API",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "network": "eip155:84532",
+        "amountType": "exact",
+        "amountMinor": "100000",
+        "amount": "0.100000",
+        "precision": 6,
+        "provenance": {
+          "source": "merchant_challenge",
+          "authority": "authoritative"
+        }
+      },
+      "hints": {
+        "requestBodyFields": [],
+        "requestQueryParams": [],
+        "requestPathParams": [],
+        "notes": []
+      },
+      "validationIssues": [],
+      "nextAction": "execute"
+    },
+    "executeOutcome": {
+      "kind": "denied",
+      "protocol": "x402",
+      "response": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "outcome": "deny",
+          "paidRequestId": "00000000-0000-0000-0000-000000000401",
+          "reasonCode": "policy_denied",
+          "reason": "Policy denied: workspace monthly budget of $5.00 exceeded. Current spend: $4.95. Requested: $0.10."
+        }
+      },
+      "paidRequestId": "00000000-0000-0000-0000-000000000401",
+      "reason": "Policy denied: workspace monthly budget of $5.00 exceeded. Current spend: $4.95. Requested: $0.10.",
+      "decision": {
+        "outcome": "deny",
+        "paidRequestId": "00000000-0000-0000-0000-000000000401",
+        "reasonCode": "policy_denied",
+        "reason": "Policy denied: workspace monthly budget of $5.00 exceeded. Current spend: $4.95. Requested: $0.10."
+      }
+    }
+  }
+}

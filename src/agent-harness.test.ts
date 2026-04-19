@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { SdkPaymentDecisionResponse } from './contracts.js';
+import type {
+  SdkPaymentDecisionResponse,
+  SdkPreparedPaidRequest,
+} from './contracts.js';
 
 import { AgentHarness } from './agent-harness.js';
 import { AgentPayClient } from './index.js';
@@ -124,6 +127,13 @@ function createDecisionResponse(decision: SdkPaymentDecisionResponse) {
   });
 }
 
+function createStaticClient(prepared: SdkPreparedPaidRequest) {
+  return {
+    preparePaidRequest: vi.fn(async () => prepared),
+    executePreparedRequest: vi.fn(),
+  };
+}
+
 describe('AgentHarness', () => {
   it('stores ready preparations with bound execution data and consumes them after execution', async () => {
     const fetchMock = vi
@@ -172,6 +182,7 @@ describe('AgentHarness', () => {
       state: 'active',
       kind: 'ready',
       protocol: 'x402',
+      costSummary: 'Costs 0.010000 USDC on Base Sepolia (exact).',
       challengeDetails: {
         x402Version: 2,
         resource: {
@@ -299,6 +310,7 @@ describe('AgentHarness', () => {
     expect(prepared).toMatchObject({
       preparedId: 'prepared-free',
       kind: 'passthrough',
+      costSummary: 'No payment required.',
       nextAction: 'treat_as_passthrough',
       validationIssues: [],
     });
@@ -877,5 +889,183 @@ describe('AgentHarness', () => {
       executionResult: expired,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds a human-readable Solana cost summary from challenge metadata', async () => {
+    const harness = new AgentHarness({
+      client: createStaticClient({
+        kind: 'ready',
+        protocol: 'x402',
+        request: {
+          url: 'https://merchant.example.com/solana-report',
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: '{"topic":"solana receipts"}',
+        },
+        challenge: {
+          protocol: 'x402',
+          headers: {},
+        },
+        challengeDetails: {
+          x402Version: 2,
+          accepts: [
+            {
+              network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+              asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+              amount: '1000',
+              extra: {
+                name: 'USD Coin',
+              },
+            },
+          ],
+        },
+        paymentRequirement: {
+          protocol: 'x402',
+          asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+          amountType: 'exact',
+          amount: '0.001000',
+          amountMinor: '1000',
+          precision: 6,
+          provenance: {
+            source: 'merchant_challenge',
+            authority: 'authoritative',
+          },
+        },
+        hints: {
+          requestBodyFields: [],
+          requestQueryParams: [],
+          requestPathParams: [],
+          notes: [],
+        },
+        validationIssues: [],
+        nextAction: 'execute',
+      }),
+      createPreparedId: () => 'prepared-solana',
+    });
+
+    const prepared = await harness.preparePaidRequest({
+      url: 'https://merchant.example.com/solana-report',
+      method: 'POST',
+      body: '{"topic":"solana receipts"}',
+    });
+
+    expect(prepared.costSummary).toBe(
+      'Costs 0.001000 USD Coin on Solana (exact).',
+    );
+  });
+
+  it('formats fallback cost summaries from raw asset and network values', async () => {
+    const harness = new AgentHarness({
+      client: createStaticClient({
+        kind: 'ready',
+        protocol: 'x402',
+        request: {
+          url: 'https://merchant.example.com/custom-report',
+          method: 'POST',
+        },
+        challenge: {
+          protocol: 'x402',
+          headers: {},
+        },
+        challengeDetails: {
+          accepts: [
+            {
+              network: 'custom-net',
+              asset: 'mystery-asset',
+            },
+          ],
+        },
+        paymentRequirement: {
+          protocol: 'x402',
+          asset: 'mystery-asset',
+          network: 'custom-net',
+          amountType: 'max',
+          amountMinor: '2500',
+          precision: 3,
+          provenance: {
+            source: 'merchant_challenge',
+            authority: 'authoritative',
+          },
+        },
+        hints: {
+          requestBodyFields: [],
+          requestQueryParams: [],
+          requestPathParams: [],
+          notes: [],
+        },
+        validationIssues: [],
+        nextAction: 'execute',
+      }),
+      createPreparedId: () => 'prepared-custom',
+    });
+
+    const prepared = await harness.preparePaidRequest({
+      url: 'https://merchant.example.com/custom-report',
+      method: 'POST',
+    });
+
+    expect(prepared.costSummary).toBe(
+      'Costs 2.500 mystery-asset on custom-net (up to).',
+    );
+  });
+
+  it('formats cost summaries from known stablecoin metadata when precision is omitted', async () => {
+    const harness = new AgentHarness({
+      client: createStaticClient({
+        kind: 'ready',
+        protocol: 'x402',
+        request: {
+          url: 'https://merchant.example.com/compat-joke',
+          method: 'POST',
+        },
+        challenge: {
+          protocol: 'x402',
+          headers: {},
+        },
+        challengeDetails: {
+          accepts: [
+            {
+              network: 'base-sepolia',
+              asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+              extra: {
+                name: 'USDC',
+              },
+            },
+          ],
+        },
+        paymentRequirement: {
+          protocol: 'x402',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          network: 'base-sepolia',
+          amountType: 'max',
+          amountMinor: '5000',
+          provenance: {
+            source: 'merchant_challenge',
+            authority: 'authoritative',
+          },
+        },
+        hints: {
+          requestBodyFields: [],
+          requestQueryParams: [],
+          requestPathParams: [],
+          notes: [],
+        },
+        validationIssues: [],
+        nextAction: 'execute',
+      }),
+      createPreparedId: () => 'prepared-known-precision',
+    });
+
+    const prepared = await harness.preparePaidRequest({
+      url: 'https://merchant.example.com/compat-joke',
+      method: 'POST',
+    });
+
+    expect(prepared.costSummary).toBe(
+      'Costs 0.005000 USDC on Base Sepolia (up to).',
+    );
   });
 });
