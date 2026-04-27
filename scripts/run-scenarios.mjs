@@ -14,9 +14,7 @@ import {
 
 const sdkRoot = resolve(import.meta.dirname ?? '.', '..');
 
-const scenarioPlan = [
-  ['nickeljoke-compat', 'ready-json-post'],
-  ['auor-public-holidays-reasoning-revise', 'revise-get-query'],
+const firstPartyScenarioPlan = [
   ['base-sepolia-research-brief-bazaar-revise', 'revise-json-post'],
   ['base-sepolia-research-brief-ready', 'ready-json-post'],
   ['base-sepolia-research-brief-revise', 'revise-json-post'],
@@ -29,7 +27,15 @@ const scenarioPlan = [
   ['solana-mainnet-research-brief-bazaar-revise', 'revise-json-post'],
   ['solana-mainnet-research-brief-ready', 'ready-json-post'],
   ['solana-mainnet-research-brief-revise', 'revise-json-post'],
+];
+
+const thirdPartyScenarioPlan = [
+  ['nickeljoke-compat', 'ready-json-post'],
+  ['auor-public-holidays-reasoning-revise', 'revise-get-query'],
   ['x402-org-protected-ready', 'ready-json-post'],
+];
+
+const mockScenarioPlan = [
   ['policy-denied-budget-exceeded', 'mock-governance'],
   ['policy-denied-merchant-not-allowed', 'mock-governance'],
   ['policy-blocked-review-event', 'mock-governance'],
@@ -37,6 +43,56 @@ const scenarioPlan = [
   ['execution-inconclusive', 'mock-governance'],
   ['preflight-failed-no-rail', 'mock-governance'],
 ];
+
+function parsePlanName(argv) {
+  const option = argv.find((arg) => arg.startsWith('--plan='));
+
+  if (!option) {
+    return 'first-party';
+  }
+
+  const planName = option.split('=')[1]?.trim();
+
+  if (!planName) {
+    return 'first-party';
+  }
+
+  return planName;
+}
+
+function buildScenarioPlan(planName) {
+  if (planName === 'first-party') {
+    return firstPartyScenarioPlan;
+  }
+
+  if (planName === 'core') {
+    return [
+      ...firstPartyScenarioPlan,
+      ...mockScenarioPlan,
+    ];
+  }
+
+  if (planName === 'third-party') {
+    return thirdPartyScenarioPlan;
+  }
+
+  if (planName === 'mock') {
+    return mockScenarioPlan;
+  }
+
+  if (planName === 'all') {
+    return [
+      ...firstPartyScenarioPlan,
+      ...thirdPartyScenarioPlan,
+      ...mockScenarioPlan,
+    ];
+  }
+
+  process.stderr.write(
+    `Unsupported scenario plan: ${planName}. Use first-party, core, third-party, mock, or all.\n`,
+  );
+  process.exit(1);
+}
 
 function loadScenarioDefinition(scenarioName) {
   return loadOpenAiHarnessScenario(
@@ -171,6 +227,24 @@ function extractSemanticOutcome(transcript, scenarioDefinition) {
 
   if (expectedOutcomeKind !== 'success') {
     const lowerFinalText = finalText.toLowerCase();
+    const reportsNonSuccessOutcome = [
+      'outcome: denied',
+      'outcome: execution_failed',
+      'outcome: execution failed',
+      'outcome: execution_inconclusive',
+      'outcome: execution inconclusive',
+      'outcome: execution_pending',
+      'outcome: execution pending',
+      'outcome: preflight_failed',
+      'outcome: preflight failed',
+      'outcome: paid_fulfillment_failed',
+      'outcome: paid fulfillment failed',
+      'outcome: request_failed',
+      'outcome: request failed',
+      'status: 4',
+      'status: 5',
+      'merchant outcome: deny',
+    ].some((phrase) => lowerFinalText.includes(phrase));
     const looksLikeSuccessClaim = [
       'executed successfully',
       'outcome: `success`',
@@ -178,7 +252,7 @@ function extractSemanticOutcome(transcript, scenarioDefinition) {
       'successful via 402flow',
     ].some((phrase) => lowerFinalText.includes(phrase));
 
-    if (looksLikeSuccessClaim) {
+    if (looksLikeSuccessClaim && !reportsNonSuccessOutcome) {
       return createSemanticFailure(
         'Scenario final text claimed success for a non-success outcome.',
         transcript,
@@ -215,8 +289,14 @@ function formatFailure(output, transcript, semanticFailureText) {
 rmSync(tmpDir, { recursive: true, force: true });
 mkdirSync(scenarioRunsDir, { recursive: true });
 
+const selectedPlan = parsePlanName(process.argv.slice(2));
+const scenarioPlan = buildScenarioPlan(selectedPlan);
+
 const summaryLines = [];
 let hadFailure = false;
+
+summaryLines.push(`Scenario plan: ${selectedPlan}`);
+summaryLines.push('');
 
 for (const [scenario, preset] of scenarioPlan) {
   const scenarioDefinition = loadScenarioDefinition(scenario);
@@ -274,8 +354,12 @@ for (const [scenario, preset] of scenarioPlan) {
 writeFileSync(summaryPath, `${summaryLines.join('\n')}\n`, 'utf8');
 
 if (hadFailure) {
-  process.stderr.write(`Scenario run failed. See ${summaryPath}\n`);
+  process.stderr.write(
+    `Scenario run failed for plan ${selectedPlan}. See ${summaryPath}\n`,
+  );
   process.exit(1);
 }
 
-process.stdout.write(`Scenario run passed. Results written to ${summaryPath}\n`);
+process.stdout.write(
+  `Scenario run passed for plan ${selectedPlan}. Results written to ${summaryPath}\n`,
+);

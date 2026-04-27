@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+const defaultFirstPartyMerchantBaseUrl = 'http://127.0.0.1:4123';
+
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -39,6 +41,46 @@ function parseJsonValue(rawValue, label) {
       `${label} must contain valid JSON. ${error instanceof Error ? error.message : ''}`.trim(),
     );
   }
+}
+
+function stripTrailingSlash(value) {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function resolveFirstPartyTargetUrl(targetUrl) {
+  let parsedTargetUrl;
+
+  try {
+    parsedTargetUrl = new URL(targetUrl);
+  } catch (error) {
+    throw new Error(
+      `Scenario targetUrl must be a valid absolute URL. ${error instanceof Error ? error.message : ''}`.trim(),
+    );
+  }
+
+  const isFirstPartyDemoMerchantPath = parsedTargetUrl.pathname.startsWith('/demo-merchant/');
+  const isLocalDemoHost = ['127.0.0.1', 'localhost'].includes(parsedTargetUrl.hostname);
+
+  if (!isFirstPartyDemoMerchantPath || !isLocalDemoHost) {
+    return targetUrl;
+  }
+
+  const configuredBaseUrlRaw =
+    process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL ??
+    defaultFirstPartyMerchantBaseUrl;
+  const configuredBaseUrl = stripTrailingSlash(configuredBaseUrlRaw.trim());
+
+  let parsedBaseUrl;
+
+  try {
+    parsedBaseUrl = new URL(configuredBaseUrl);
+  } catch (error) {
+    throw new Error(
+      `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL must be a valid absolute URL. ${error instanceof Error ? error.message : ''}`.trim(),
+    );
+  }
+
+  return `${parsedBaseUrl.origin}${parsedTargetUrl.pathname}${parsedTargetUrl.search}${parsedTargetUrl.hash}`;
 }
 
 export function loadJsonPromptValue(options) {
@@ -126,7 +168,7 @@ export function loadOpenAiHarnessScenario(filePath) {
   return {
     name: parsedValue.name,
     description: parsedValue.description,
-    targetUrl: parsedValue.targetUrl,
+    targetUrl: resolveFirstPartyTargetUrl(parsedValue.targetUrl),
     ...(parsedValue.task !== undefined && typeof parsedValue.task === 'string'
       ? { task: parsedValue.task }
       : {}),

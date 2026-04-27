@@ -6,32 +6,54 @@ This document collects the example harness scenarios, recommended preset pairing
 
 Before running SDK examples or scenario sweeps from this repo, create `.env` from `.env.example` in the SDK root. The scenario runner loads SDK-local dotenv files directly.
 
-To rerun the full stable scenario set and replace any older artifacts in `tmp/` with only the newest results, use:
+To rerun the canonical core proving sweep (first-party + mock) and replace any older artifacts in `tmp/` with only the newest results, use:
 
 ```bash
-npm run scenario:all
+npm run scenario:core
 ```
 
-That command clears `tmp/`, rebuilds the SDK, reruns the full scenario plan, and writes only the newest logs, transcripts, and semantic summary back under `tmp/`.
+That command clears `tmp/`, rebuilds the SDK, reruns first-party plus mock scenarios in one run, and writes only the newest logs, transcripts, and semantic summary back under `tmp/`.
+
+Plan-specific commands:
+
+1. `npm run scenario:all`: full mixed sweep (first-party + third-party + mock)
+2. `npm run scenario:core`: core proving sweep (first-party + mock)
+3. `npm run scenario:first-party`: first-party self-hosted demo-merchant scenarios only
+4. `npm run scenario:third-party`: third-party merchant compatibility scenarios only
+5. `npm run scenario:mock`: fixture-driven mock outcomes only
+
+Current first-party scenarios target the self-hosted demo merchant at `http://127.0.0.1:4123`. When the public AWS demo-merchant host is ready, move first-party scenario URLs there without collapsing first-party and third-party plans.
+
+Use one env variable for the cutover:
+
+```bash
+export X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="https://demo-merchant.402flow.ai"
+```
+
+Behavior:
+
+1. only first-party fixtures with local demo-merchant URLs are rewritten
+2. third-party fixtures are unchanged
+3. when unset, first-party fixtures continue using `http://127.0.0.1:4123`
 
 Shell-exported values still win when you need to temporarily point the SDK at a different control plane or auth context.
 
 Current named scenarios:
 
-1. `nickeljoke-compat`: public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, with `POST` as part of the contract
-2. `auor-public-holidays-reasoning-revise`: GET scenario that derives required query params from merchant hints
-3. `base-sepolia-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Base Sepolia merchant research brief route
-4. `base-sepolia-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-5. `base-sepolia-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-6. `base-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Base mainnet merchant research brief route
-7. `base-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-8. `base-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-9. `solana-devnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana devnet merchant research brief route
-10. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-11. `solana-devnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-12. `solana-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana mainnet merchant research brief route
-13. `solana-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-14. `solana-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+1. `base-sepolia-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Base Sepolia merchant research brief route
+2. `base-sepolia-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+3. `base-sepolia-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+4. `base-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Base mainnet merchant research brief route
+5. `base-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+6. `base-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+7. `solana-devnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana devnet merchant research brief route
+8. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+9. `solana-devnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+10. `solana-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana mainnet merchant research brief route
+11. `solana-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
+12. `solana-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+13. `nickeljoke-compat`: public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, with `POST` as part of the contract
+14. `auor-public-holidays-reasoning-revise`: GET scenario that derives required query params from merchant hints
 15. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
 16. `policy-denied-budget-exceeded`: mocked governance scenario that returns a budget-cap denial and expects the final answer to explain the policy block clearly
 17. `policy-denied-merchant-not-allowed`: mocked governance scenario that returns a deny-by-default merchant rejection
@@ -66,9 +88,9 @@ Recommended pairings:
 20. `execution-inconclusive` -> `mock-governance`
 21. `preflight-failed-no-rail` -> `mock-governance`
 
-## Governance Fixtures
+## Mock Fixtures
 
-The six governance scenarios are fixture-driven and use the mock client path inside the harness example.
+The six mock scenarios are fixture-driven and use the mock client path inside the harness example.
 
 That means:
 

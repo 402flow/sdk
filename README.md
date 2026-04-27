@@ -308,7 +308,10 @@ Receipt notes:
 1. `receipt.status = 'confirmed'` means the control plane has chain-backed settlement attribution for the paid attempt
 2. `receipt.status = 'provisional'` means the paid outcome was supportable by merchant-provided evidence, but final settlement attribution is still pending reconciliation
 3. callers should treat provisional receipts as payment-attempt evidence, not as proof of final settlement
-4. if you safely retry the same logical paid request with the same `idempotencyKey`, the SDK returns the same durable paid outcome instead of creating a second paid attempt
+4. `idempotencyKey` is optional for normal SDK use, which keeps low-value one-off integrations simple
+5. if you safely retry the same logical paid request with the same `idempotencyKey`, the SDK returns the same durable paid outcome instead of creating a second paid attempt
+6. if you omit `idempotencyKey`, the request still works, but you should not assume replay-safe duplicate suppression across retries
+7. use `idempotencyKey` for retrying callers, automation loops, and higher-load integrations where duplicate suppression matters
 
 ## Receipt Lookup
 
@@ -370,10 +373,10 @@ export X402FLOW_AGENT="reporting-worker"
 export X402FLOW_BOOTSTRAP_KEY="..."
 
 npm run example:openai-tools-quickstart -- \
-  "Prepare and execute a paid POST request to https://nickeljoke.vercel.app/api/joke with JSON body {\"topic\":\"sdk integration\",\"tone\":\"dry\",\"audience\":\"platform engineers\"}"
+  "Prepare and execute a paid POST request to http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet with JSON body {\"topic\":\"sdk integration rollout\",\"audience\":\"platform engineers\",\"format\":\"bullets\"}"
 ```
 
-Use this when you want the shortest real host integration path. Use the full evaluation harness only when you need scenarios, transcripts, or repeated eval runs.
+Use this when you want the shortest real host integration path. For now, this quickstart defaults to the self-hosted first-party demo merchant in `agent-pay` so SDK adoption starts from the canonical proving ground. Switch the merchant URL to the public AWS demo-merchant host once that deployment is live.
 
 ## Optional `AgentHarness`
 
@@ -391,6 +394,31 @@ For harness usage, presets, transcripts, and scenario packs, see:
 
 1. [docs/evaluation-harness.md](docs/evaluation-harness.md)
 2. [docs/harness-scenarios.md](docs/harness-scenarios.md)
+
+For the canonical cross-repo core proving sweep (first-party + mock), run:
+
+```bash
+pnpm scenario:core
+```
+
+`pnpm scenario:core` runs first-party + mock in a single pass and keeps one combined artifact set under `tmp/`.
+
+Additional scenario commands:
+
+1. `pnpm scenario:core`: core proving sweep (first-party + mock)
+2. `pnpm scenario:first-party`: first-party self-hosted demo-merchant scenarios only
+3. `pnpm scenario:third-party`: third-party merchant compatibility scenarios only
+4. `pnpm scenario:mock`: fixture-only mock outcomes, no live merchant required
+
+`pnpm scenario:all` now literally runs all scenarios (first-party + third-party + mock).
+
+As the public AWS demo-merchant host comes online, keep these command boundaries and flip first-party scenario fixtures with one env variable:
+
+```bash
+export X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="https://demo-merchant.402flow.ai"
+```
+
+When unset, first-party fixtures default to the self-hosted demo merchant at `http://127.0.0.1:4123`.
 
 ## Publish
 

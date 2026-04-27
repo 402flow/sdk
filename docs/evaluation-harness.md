@@ -132,7 +132,7 @@ npm run example:openai-tools-quickstart -- --help
 For the larger evaluation runner, use a direct prompt:
 
 ```bash
-npm run example:openai-harness -- --prompt "Prepare and execute a paid POST request to https://nickeljoke.vercel.app/api/joke with JSON body {\"topic\":\"sdk integration\",\"tone\":\"dry\",\"audience\":\"platform engineers\"}"
+npm run example:openai-harness -- --prompt "Prepare and execute a paid POST request to http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet with JSON body {\"topic\":\"sdk integration rollout\",\"audience\":\"platform engineers\",\"format\":\"bullets\"}"
 ```
 
 You can also use a named preset and scenario:
