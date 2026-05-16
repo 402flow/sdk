@@ -1672,4 +1672,70 @@ describe('AgentPayClient', () => {
       'www-authenticate': 'x402 amount="0.500000" asset="0x036CbD53842c5426634e7929541eC2318f3dCF7e"',
     });
   });
+
+  it('forwards optional paid-request attribution for direct SDK callers', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () =>
+        new Response('payment required', {
+          status: 402,
+          headers: {
+            'x-payment-protocol': 'x402',
+            'x-payment-amount': '0.500000',
+            'x-payment-asset': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+            'x-payment-precision': '6',
+            'x-payment-payee': 'merchant-wallet',
+          },
+        }),
+      )
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'allow',
+            paidRequestId: '00000000-0000-0000-0000-000000000152',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000252',
+            reasonCode: 'policy_allow',
+            reason: 'Allowed.',
+            merchantResponse: {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+              body: '{"ok":true}',
+            },
+            receipt: {
+              ...baseReceipt,
+              paidRequestId: '00000000-0000-0000-0000-000000000152',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000252',
+            },
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const result = await client.fetchPaid(
+      'https://merchant.example.com/v1/search?query=ai',
+      { method: 'POST' },
+      {
+        attribution: {
+          discoverySource: 'direct',
+        },
+      },
+    );
+
+    expect(result.kind).toBe('success');
+
+    const controlPlaneBody = JSON.parse(
+      String(fetchMock.mock.calls[1]?.[1]?.body),
+    );
+
+    expect(controlPlaneBody.context.attribution).toEqual({
+      discoverySource: 'direct',
+    });
+  });
 });

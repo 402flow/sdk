@@ -132,6 +132,46 @@ If the merchant does not require payment for that exact request, the SDK returns
 
 `result.response` is always the merchant HTTP response. SDK-owned payment metadata such as `paidRequestId`, `paymentAttemptId`, `receiptId`, and `receipt` stays on the SDK result instead of being injected into the merchant JSON body.
 
+### Optional Attribution
+
+Most SDK users do not need to send attribution at all.
+
+The optional `attribution` field is for callers that already know where this paid endpoint came from and want that provenance to survive into control-plane audit, reporting, and later policy analysis.
+
+Common cases:
+
+1. your app found the endpoint through your own registry or catalog
+2. your app imported the endpoint from a saved workspace config
+3. your agent is calling a merchant directly and you want to mark that path as `direct`
+4. your host selected the endpoint from a discovery surface such as Bazaar, Dexter, pay.sh, x402scan, or another catalog
+
+This field does not make payment execution work. It improves lifecycle explainability.
+
+If you do not already know the endpoint provenance, omit it.
+
+```ts
+const result = await client.fetchPaid(
+  'https://merchant.example.com/reports/daily',
+  {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: createJsonRequestBody({
+      date: '2026-03-25',
+    }),
+  },
+  {
+    description: 'sync daily paid report',
+    attribution: {
+      discoverySource: 'direct',
+    },
+  },
+);
+```
+
+For the first attribution slice, `discoverySource` is the main field callers should set when they have a clear answer. The control plane derives an early endpoint-level `resourceIdentity` from the request method and URL, so callers do not need to compute that themselves.
+
 ### Interpreting Merchant Responses
 
 The SDK gives you a stable place for payment metadata, but it does not invent a universal fulfilled-response schema for merchant content.
@@ -228,6 +268,13 @@ const prepared = await client.preparePaidRequest(
 
 `externalMetadata` is optional caller context. It improves preparation when the caller already has structured endpoint knowledge, but it is not required for normal SDK use.
 
+`attribution` is separate from `externalMetadata`.
+
+1. `externalMetadata` helps the SDK understand request shape before execution
+2. `attribution` helps the control plane explain where the paid endpoint came from after execution
+
+Use `externalMetadata` for request hints. Use `attribution` for provenance. Either may be omitted.
+
 ### What `ready` Means
 
 `ready` means this exact request can proceed through governed paid execution as-is; it does not mean the SDK has inferred the best task parameters for you.
@@ -256,6 +303,13 @@ const prepared = await client.preparePaidRequest(
       prompt: 'foggy coastline',
     }),
   },
+
+  const result = await client.executePreparedRequest(prepared, {
+    description: 'generate paid image',
+    attribution: {
+      discoverySource: 'manual',
+    },
+  });
 );
 
 if (prepared.kind === 'ready') {

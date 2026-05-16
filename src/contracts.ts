@@ -214,12 +214,40 @@ export const normalizedMoneySchema = z
   });
 export type NormalizedMoney = z.infer<typeof normalizedMoneySchema>;
 
-/** Request-scoped context the control plane uses for policy, audit, and identity. */
+/** Request-scoped context the control plane uses for policy, audit, identity, and optional provenance. */
 export const paidRequestContextSchema = z.object({
   organization: externalIdSchema,
   agent: externalIdSchema,
   description: z.string().min(1).max(200).optional(),
   metadata: z.record(z.unknown()).optional(),
+  attribution: z
+    .object({
+      discoverySource: z
+        .enum([
+          'coinbase_bazaar',
+          'dexter',
+          'pay_sh',
+          'x402scan',
+          'manual',
+          'direct',
+          'observed',
+          'imported',
+          'unknown',
+        ])
+        .optional(),
+      resourceIdentity: z
+        .object({
+          kind: z.literal('http_endpoint'),
+          method: paidRequestHttpMethodSchema,
+          canonicalUrl: z.string().url(),
+          canonicalKey: z.string().min(1).max(500),
+        })
+        .optional(),
+    })
+    .describe(
+      'Optional caller-supplied provenance for where the endpoint came from. This improves audit and reporting but is not required for execution.',
+    )
+    .optional(),
 });
 export type PaidRequestContext = z.infer<typeof paidRequestContextSchema>;
 
