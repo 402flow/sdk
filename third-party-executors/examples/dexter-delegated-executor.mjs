@@ -4,9 +4,9 @@ import {
   createEvmKeypairWallet,
 } from '@dexterai/x402/client';
 
-import { FetchPaidError, createJsonRequestBody } from '../dist/index.js';
-import { createDexterExecutor } from '../dev-support-dist/dev-support/dexter-executor.js';
-import { createClientFromEnv, getRequiredEnv } from './openai-tools-runtime.mjs';
+import { FetchPaidError, createJsonRequestBody } from '../../dist/index.js';
+import { createDexterExecutor } from '../dist/dexter-executor.js';
+import { createClientFromEnv, getRequiredEnv } from '../../examples/openai-tools-runtime.mjs';
 
 const defaultBody = {
   topic: 'sdk integration rollout',

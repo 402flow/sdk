@@ -42,14 +42,15 @@
   },
   "scripts": {
     "build": "npm run clean && tsc -p tsconfig.json",
-    "build:dev-support": "tsc -p tsconfig.dev-support.json",
     "check": "npm run lint && npm test",
-    "clean": "node -e \"const fs = require('node:fs'); for (const path of ['dist', 'dev-support-dist', 'tsconfig.tsbuildinfo', 'tsconfig.typecheck.tsbuildinfo']) { fs.rmSync(path, { recursive: true, force: true }); }\"",
-    "example:dexter-delegated-executor": "npm run build && npm run build:dev-support && node examples/dexter-delegated-executor.mjs",
+    "check:all": "npm run check && npm --prefix third-party-executors run check",
+    "clean": "node -e \"const fs = require('node:fs'); for (const path of ['dist', 'tsconfig.tsbuildinfo', 'tsconfig.typecheck.tsbuildinfo']) { fs.rmSync(path, { recursive: true, force: true }); }\"",
     "example:openai-harness": "npm run build && node examples/openai-agent-harness.mjs",
     "example:openai-tools-quickstart": "npm run build && node examples/openai-tools-quickstart.mjs",
-    "lint": "eslint src test dev-support vitest.config.ts && npm run typecheck",
+    "install:all": "npm install && npm --prefix third-party-executors install",
+    "lint": "eslint src test vitest.config.ts && npm run typecheck",
     "pack:check": "npm run build && npm pack --dry-run",
+    "prepublishOnly": "npm run check:all",
     "prepack": "npm run build",
     "scenario:all": "npm run build && node scripts/run-scenarios.mjs --plan=all",
     "scenario:core": "npm run build && node scripts/run-scenarios.mjs --plan=core",
@@ -64,7 +65,6 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@dexterai/x402": "^3.9.0",
     "@eslint/js": "^9.22.0",
     "@types/node": "^22.13.10",
     "@vitest/coverage-v8": "^3.0.8",

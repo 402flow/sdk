@@ -1,3 +1,10 @@
+/**
+ * Dexter delegated-execution adapter for the repo-local third-party executors
+ * package.
+ *
+ * This module stays outside the main @402flow/sdk package so provider-specific
+ * SDK dependencies can evolve independently from the provider-neutral SDK core.
+ */
 import {
   getPaymentReceipt,
   payAndFetch,
@@ -7,6 +14,8 @@ import {
 } from '@dexterai/x402/client';
 
 import type {
+  PreparedRequestExecutor,
+  PreparedRequestExecutorInput,
   SdkDelegatedExecutionDiagnosticCode,
   SdkDelegatedExecutionResult,
   SdkDelegatedExecutionStatus,
@@ -14,11 +23,7 @@ import type {
   SdkMerchantResponse,
   SdkPreparedPaidRequestReady,
   SettlementEvidenceClass,
-} from '../src/contracts.js';
-import type {
-  PreparedRequestExecutor,
-  PreparedRequestExecutorInput,
-} from '../src/executors.js';
+} from '@402flow/sdk';
 
 export type DexterExecutorOptions = {
   wallets: WalletSet;

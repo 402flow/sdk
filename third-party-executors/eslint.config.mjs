@@ -15,7 +15,7 @@ const unusedVariablesRule = [
 
 export default tseslint.config(
   {
-    ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**'],
+    ignores: ['**/node_modules/**', '**/dist/**'],
   },
   {
     files: ['src/**/*.ts', 'test/**/*.ts', '*.ts'],

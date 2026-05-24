@@ -1,0 +1,36 @@
+{
+  "name": "@402flow/sdk-third-party-executors",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Repo-local third-party executor adapters and proofs for @402flow/sdk.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "overrides": {
+    "jayson": {
+      "uuid": "11.1.1"
+    }
+  },
+  "scripts": {
+    "build": "npm --prefix .. run build && npm run clean && tsc -p tsconfig.json",
+    "check": "npm run lint && npm test",
+    "clean": "node -e \"const fs = require('node:fs'); for (const path of ['dist', 'tsconfig.tsbuildinfo', 'tsconfig.typecheck.tsbuildinfo']) { fs.rmSync(path, { recursive: true, force: true }); }\"",
+    "example:dexter-delegated-executor": "npm run build && node examples/dexter-delegated-executor.mjs",
+    "lint": "eslint src test vitest.config.ts && npm run typecheck",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
+  },
+  "dependencies": {
+    "@dexterai/x402": "^3.9.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@types/node": "^22.13.10",
+    "eslint": "^9.22.0",
+    "globals": "^15.15.0",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.1",
+    "vitest": "^3.0.8"
+  }
+}

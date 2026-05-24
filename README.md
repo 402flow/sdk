@@ -414,7 +414,7 @@ if (prepared.kind === 'ready') {
 }
 ```
 
-This snippet shows the intended split directly: your host-owned code does the provider call and maps it into the delegated execution contract, while the SDK still owns authorize, finalize, and the outward result shape. For a real host-owned Dexter integration that performs the paid call, see `examples/dexter-delegated-executor.mjs`.
+This snippet shows the intended split directly: your host-owned code does the provider call and maps it into the delegated execution contract, while the SDK still owns authorize, finalize, and the outward result shape. For a real host-owned Dexter integration that performs the paid call, see `third-party-executors/examples/dexter-delegated-executor.mjs`.
 
 Responsibility split:
 
@@ -426,9 +426,22 @@ Responsibility split:
 
 If your host app wants to execute through Dexter, pay.sh, or another provider, that integration should install and own the third-party SDK directly. `@402flow/sdk` only owns the executor contract and the governed authorize/finalize flow.
 
-For a repo-local host-owned Dexter example, see `examples/dexter-delegated-executor.mjs` and run:
+The repo keeps third-party executor proofs in the separate `third-party-executors/` package so the main `@402flow/sdk` install path stays provider-neutral.
+
+For a repo-wide verification pass from the SDK root, run:
 
 ```bash
+npm run install:all
+npm run check:all
+```
+
+`npm run install:all` installs both the main SDK package and the separate `third-party-executors` package from the SDK root. `npm run check` still validates only the main SDK package. `npm run check:all` runs the main SDK checks first, then runs the separate `third-party-executors` package checks from the top level.
+
+For a repo-local host-owned Dexter example, run:
+
+```bash
+cd third-party-executors
+npm install
 export DEXTER_EVM_PRIVATE_KEY="..."
 
 npm run example:dexter-delegated-executor -- \
@@ -589,8 +602,10 @@ When unset, first-party fixtures default to the self-hosted demo merchant at `ht
 ## Publish
 
 ```bash
-npm install
-npm run check
+npm run install:all
+npm run check:all
 npm run pack:check
 npm publish --access public
 ```
+
+`npm publish` now also runs `npm run check:all` through the root `prepublishOnly` hook, so the repo-wide test pass is enforced before publish even if you skip that step manually.
