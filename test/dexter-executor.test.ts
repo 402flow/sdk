@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { PreparedRequestExecutorInput } from './executors.js';
+import type { PreparedRequestExecutorInput } from '../src/executors.js';
 
 const { getPaymentReceiptMock, payAndFetchMock } = vi.hoisted(() => ({
   getPaymentReceiptMock: vi.fn(),
@@ -12,7 +12,7 @@ vi.mock('@dexterai/x402/client', () => ({
   payAndFetch: payAndFetchMock,
 }));
 
-import { createDexterExecutor } from '../test-support/dexter-executor.js';
+import { createDexterExecutor } from '../dev-support/dexter-executor.js';
 
 const wallets = {
   evm: {

@@ -19,7 +19,6 @@ import type {
   PreparedRequestExecutor,
   PreparedRequestExecutorInput,
 } from '../src/executors.js';
-import { normalizeHeaders } from '../src/http-utils.js';
 
 export type DexterExecutorOptions = {
   wallets: WalletSet;
@@ -152,6 +151,21 @@ async function toSdkMerchantResponse(
     headers: normalizeHeaders(response.headers) ?? {},
     body: await response.text(),
   };
+}
+
+function normalizeHeaders(headers: HeadersInit | undefined) {
+  if (!headers) {
+    return undefined;
+  }
+
+  const normalizedHeaders: Record<string, string> = {};
+  const headerMap = new Headers(headers);
+
+  headerMap.forEach((value, key) => {
+    normalizedHeaders[key] = value;
+  });
+
+  return normalizedHeaders;
 }
 
 function mapDexterFailure(

@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   SdkPaymentDecisionResponse,
   SdkPreparedPaidRequest,
-} from './contracts.js';
+} from '../src/contracts.js';
 
-import { AgentHarness } from './agent-harness.js';
-import { AgentPayClient } from './index.js';
+import { AgentHarness } from '../src/agent-harness.js';
+import { AgentPayClient } from '../src/index.js';
 
 const baseContext = {
   organization: 'acme-labs',

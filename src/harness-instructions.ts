@@ -1,3 +1,11 @@
+/**
+ * Canonical host-facing orchestration instructions for the optional
+ * AgentHarness tool contract.
+ *
+ * These exports give host adapters one shared source of truth for the
+ * prepare/execute/result workflow so provider-specific tool wrappers do not
+ * need to copy or reinterpret the core SDK orchestration rules.
+ */
 export type HarnessToolName =
   | 'prepare_paid_request'
   | 'execute_prepared_request'

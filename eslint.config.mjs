@@ -18,7 +18,7 @@ export default tseslint.config(
     ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**'],
   },
   {
-    files: ['src/**/*.ts', '*.ts'],
+    files: ['src/**/*.ts', 'test/**/*.ts', 'dev-support/**/*.ts', '*.ts'],
     extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       globals: globals.node,
@@ -33,7 +33,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/**/*.test.ts'],
+    files: ['src/**/*.test.ts', 'test/**/*.test.ts'],
     rules: {
       '@typescript-eslint/no-base-to-string': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',

@@ -1,3 +1,10 @@
+/**
+ * Provider-neutral delegated execution contract for @402flow/sdk.
+ *
+ * The SDK owns delegated authorization, finalization, and outward result
+ * normalization. Host-owned executors implement only the provider-specific
+ * paid merchant call and return a normalized delegated execution result.
+ */
 import type { DetectedChallenge } from './challenge-detection.js';
 import type {
   PaidRequestContext,

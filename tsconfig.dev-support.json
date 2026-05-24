@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dev-support-dist",
+    "rootDir": ".",
+    "composite": false,
+    "incremental": false
+  },
+  "include": ["dev-support/**/*.ts"]
+}

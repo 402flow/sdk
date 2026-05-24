@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createDexterExecutor } from '../test-support/dexter-executor.js';
+import { createDexterExecutor } from '../dev-support/dexter-executor.js';
 
 import {
   AgentPayClient,
@@ -8,7 +8,7 @@ import {
   createAgentPayClient,
   sdkClientVersion,
   sdkClientVersionHeaderName,
-} from './index.js';
+} from '../src/index.js';
 
 const baseContext = {
   organization: 'acme-labs',
