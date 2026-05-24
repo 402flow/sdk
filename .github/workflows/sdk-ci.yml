@@ -17,10 +17,10 @@ jobs:
           - 20
           - 22
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up Node.js and npm cache
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
@@ -29,27 +29,27 @@ jobs:
             package-lock.json
             third-party-executors/package-lock.json
 
-      - name: Install dependencies
+      - name: Install root and third-party package dependencies
         run: |
           npm ci
           npm --prefix third-party-executors ci
 
-      - name: Validate source tree
+      - name: Lint, typecheck, and run tests across SDK packages
         run: npm run check:all
 
-      - name: Verify packages can build and root package can dry pack
+      - name: Build both packages and dry-pack the root SDK
         run: |
           npm run pack:check
           npm --prefix third-party-executors run build
 
-      - name: Pack SDK artifact
+      - name: Pack root SDK tarball
         run: |
           set -e
           mkdir -p artifacts
           TARBALL="$(npm pack --pack-destination artifacts | tail -n 1)"
           echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
 
-      - name: Smoke test packed artifact
+      - name: Install and smoke test packed SDK tarball
         run: |
           set -e
           TMP_DIR="$(mktemp -d)"
@@ -58,7 +58,7 @@ jobs:
           npm install "$GITHUB_WORKSPACE/artifacts/$TARBALL" >/dev/null 2>&1
           node --input-type=module -e "const sdk = await import('@402flow/sdk'); if (!sdk.AgentPayClient || !sdk.createAgentPayClient || !sdk.createJsonRequestBody) { throw new Error('Packed artifact missing expected root exports.'); }"
 
-      - name: Upload packed artifact
+      - name: Upload packed SDK tarball
         if: ${{ matrix.node-version == 22 }}
         uses: actions/upload-artifact@v4
         with:
