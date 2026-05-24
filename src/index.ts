@@ -16,10 +16,14 @@ import {
   monetaryAmountToMinorUnits,
   paidRequestChallengeSchema,
   paidRequestHttpRequestSchema,
+  sdkDelegatedExecutionResultSchema,
+  sdkPaymentAuthorizationResponseSchema,
   sdkPaymentDecisionRequestSchema,
   sdkPaymentDecisionResponseSchema,
+  sdkPaymentFinalizationRequestSchema,
   type SdkPreparedChallengeAccept,
   type SdkPreparedChallengeDetails,
+  type SdkDelegatedExecutionResult,
   type SdkExternalMetadata,
   type SdkPreparedHintField,
   type SdkPreparedHintValue,
@@ -36,6 +40,12 @@ import {
   type SdkReceipt,
   type SdkReceiptResponse,
 } from './contracts.js';
+import type {
+  DelegatedExecutePreparedRequest,
+  PreparedRequestExecutor,
+  PreparedRequestExecutorInput,
+} from './executors.js';
+import { normalizeHeaders } from './http-utils.js';
 import {
   sdkClientVersion,
   sdkClientVersionHeaderName,
@@ -80,17 +90,25 @@ export type PreparePaidRequestOptions = {
   externalMetadata?: SdkExternalMetadata;
 };
 
-/** Execution context accepted when paying a previously prepared request. */
-export type ExecutePreparedRequest = Omit<FetchPaidRequest, 'challenge'>;
-
 /** Request-scoped control-plane context accepted by fetchPaid(). */
 export type FetchPaidRequest =
-  Omit<PaidRequestContext, keyof AgentPayClientIdentity> & FetchPaidOptions;
+  Omit<PaidRequestContext, keyof AgentPayClientIdentity | 'executionProvider'> &
+  FetchPaidOptions;
+
+/** Execution context accepted when paying a previously prepared request. */
+export type ExecutePreparedRequest = FetchPaidRequest & {
+  executionProvider?: string;
+  executor?: PreparedRequestExecutor;
+};
 
 /** Body types the SDK can safely replay through paid prepare/execute flows. */
 export type ReplayableRequestBody = string | URLSearchParams;
 
 type PaidProtocol = DetectedChallenge['protocol'];
+type DelegatedPreparedExecution = {
+  executor: PreparedRequestExecutor;
+  request: DelegatedExecutePreparedRequest;
+};
 type DenyDecision = Extract<SdkPaymentDecisionResponse, { outcome: 'deny' }>;
 type ExecutingDecision = Extract<
   SdkPaymentDecisionResponse,
@@ -274,21 +292,6 @@ const defaultRuntimeTokenRefreshWindowMs = 30_000;
 
 function trimTrailingSlash(value: string) {
   return value.endsWith('/') ? value.slice(0, -1) : value;
-}
-
-function normalizeHeaders(headers: HeadersInit | undefined) {
-  if (!headers) {
-    return undefined;
-  }
-
-  const normalizedHeaders: Record<string, string> = {};
-  const headerMap = new Headers(headers);
-
-  headerMap.forEach((value, key) => {
-    normalizedHeaders[key] = value;
-  });
-
-  return normalizedHeaders;
 }
 
 function createJsonResponse(status: number, payload: unknown) {
@@ -1492,6 +1495,57 @@ export class AgentPayClient {
     prepared: SdkPreparedPaidRequestReady,
     request: ExecutePreparedRequest = {},
   ): Promise<PaidResponse> {
+    const delegatedExecution = this.resolveDelegatedPreparedExecution(request);
+
+    if (delegatedExecution) {
+      const authorizationRequest = {
+        ...delegatedExecution.request,
+        challenge: prepared.challenge as DetectedChallenge,
+      };
+      const decisionRequest = this.createDecisionRequest(
+        prepared.request.url,
+        {
+          method: prepared.request.method,
+          ...(prepared.request.headers ? { headers: prepared.request.headers } : {}),
+          ...(prepared.request.body !== undefined
+            ? { body: prepared.request.body }
+            : {}),
+        },
+        authorizationRequest,
+        prepared.challenge as DetectedChallenge,
+      );
+      const authorization = await this.requestPaymentAuthorization(
+        decisionRequest,
+        prepared.challenge.protocol,
+      );
+
+      if (authorization.outcome !== 'authorized') {
+        return this.mapDecisionToPaidResponse(
+          authorization,
+          prepared.challenge.protocol,
+        );
+      }
+
+      const delegatedResult = await this.executeWithPreparedExecutor({
+        prepared,
+        delegatedExecution,
+        authorization,
+      });
+      const finalization = await this.requestPaymentFinalization(
+        sdkPaymentFinalizationRequestSchema.parse({
+          paidRequestId: authorization.paidRequestId,
+          paymentAttemptId: authorization.paymentAttemptId,
+          result: delegatedResult,
+        }),
+        prepared.challenge.protocol,
+      );
+
+      return this.mapDecisionToPaidResponse(
+        finalization,
+        prepared.challenge.protocol,
+      );
+    }
+
     return this.fetchPaid(
       prepared.request.url,
       {
@@ -1598,71 +1652,204 @@ export class AgentPayClient {
     decisionRequest: ReturnType<typeof sdkPaymentDecisionRequestSchema.parse>,
     protocol: PaidProtocol,
   ) {
-    // The control plane is the single source of truth for payment policy and
-    // receipt persistence. Any response that does not match the SDK contract is
-    // downgraded to request_failed.
-    const decisionResponse = await this.controlPlaneFetch(
+    return this.postControlPlaneJson(
       '/api/sdk/payment-decisions',
+      decisionRequest,
+      sdkPaymentDecisionResponseSchema,
+      protocol,
+      'Payment decision',
+    );
+  }
+
+  private async requestPaymentAuthorization(
+    authorizationRequest: ReturnType<typeof sdkPaymentDecisionRequestSchema.parse>,
+    protocol: PaidProtocol,
+  ) {
+    return this.postControlPlaneJson(
+      '/api/sdk/payment-authorizations',
+      authorizationRequest,
+      sdkPaymentAuthorizationResponseSchema,
+      protocol,
+      'Payment authorization',
+    );
+  }
+
+  private async requestPaymentFinalization(
+    finalizationRequest: ReturnType<typeof sdkPaymentFinalizationRequestSchema.parse>,
+    protocol: PaidProtocol,
+  ) {
+    return this.postControlPlaneJson(
+      '/api/sdk/payment-finalizations',
+      finalizationRequest,
+      sdkPaymentDecisionResponseSchema,
+      protocol,
+      'Payment finalization',
+    );
+  }
+
+  private async postControlPlaneJson<ResponseBody>(
+    path: string,
+    requestBody: unknown,
+    responseSchema: { parse(input: unknown): ResponseBody },
+    protocol: PaidProtocol,
+    operationName: string,
+  ): Promise<ResponseBody> {
+    const controlPlaneResponse = await this.controlPlaneFetch(
+      path,
       {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
         },
-        body: JSON.stringify(decisionRequest),
+        body: JSON.stringify(requestBody),
       },
       await this.getRuntimeAuthorizationHeader(),
     );
 
-    const responseBody = await decisionResponse.text();
+    const responseBody = await controlPlaneResponse.text();
     const parsedBody = tryParseJson(responseBody);
 
     if (parsedBody !== undefined) {
       try {
-        return sdkPaymentDecisionResponseSchema.parse(parsedBody);
+        return responseSchema.parse(parsedBody);
       } catch {
         // Fall through to request-failed handling below.
       }
     }
 
-    if (!decisionResponse.ok) {
+    const defaultFailureMessage = `${operationName} failed with status ${controlPlaneResponse.status}.`;
+
+    if (!controlPlaneResponse.ok) {
       throw new FetchPaidError<RequestFailedPaidResponse>({
         kind: 'request_failed',
         protocol,
         response: createRawResponse(
-          decisionResponse.status,
+          controlPlaneResponse.status,
           responseBody,
-          decisionResponse.headers,
+          controlPlaneResponse.headers,
         ),
-        reason: getControlPlaneErrorMessage(
-          parsedBody,
-          `Payment decision failed with status ${decisionResponse.status}.`,
-        ),
+        reason: getControlPlaneErrorMessage(parsedBody, defaultFailureMessage),
         decision: {
           outcome: 'request_failed',
-          status: decisionResponse.status,
-          message: getControlPlaneErrorMessage(
-            parsedBody,
-            `Payment decision failed with status ${decisionResponse.status}.`,
-          ),
+          status: controlPlaneResponse.status,
+          message: getControlPlaneErrorMessage(parsedBody, defaultFailureMessage),
           ...(parsedBody !== undefined ? { body: parsedBody } : {}),
         },
       });
     }
 
+    const contractMessage = `${operationName} response did not match the SDK contract.`;
+
     throw new FetchPaidError<RequestFailedPaidResponse>({
       kind: 'request_failed',
       protocol,
       response: createRawResponse(
-        decisionResponse.status,
+        controlPlaneResponse.status,
         responseBody,
-        decisionResponse.headers,
+        controlPlaneResponse.headers,
       ),
-      reason: 'Payment decision response did not match the SDK contract.',
+      reason: contractMessage,
       decision: {
         outcome: 'request_failed',
-        status: decisionResponse.status,
-        message: 'Payment decision response did not match the SDK contract.',
+        status: controlPlaneResponse.status,
+        message: contractMessage,
         ...(parsedBody !== undefined ? { body: parsedBody } : {}),
+      },
+    });
+  }
+
+  private resolveDelegatedPreparedExecution(
+    request: ExecutePreparedRequest,
+  ): DelegatedPreparedExecution | null {
+    const providerFromExecutor = request.executor?.provider;
+    const requestedProvider = request.executionProvider ?? providerFromExecutor;
+
+    if (!requestedProvider || requestedProvider === 'direct') {
+      if (request.executor) {
+        throw new Error(
+          'Delegated executors require a non-direct executionProvider.',
+        );
+      }
+
+      return null;
+    }
+
+    if (!request.executor) {
+      throw new Error(
+        `Execution provider "${requestedProvider}" requires an executor implementation.`,
+      );
+    }
+
+    if (
+      providerFromExecutor &&
+      request.executionProvider &&
+      providerFromExecutor !== request.executionProvider
+    ) {
+      throw new Error(
+        `Execution provider mismatch: request asked for "${request.executionProvider}" but executor is registered as "${providerFromExecutor}".`,
+      );
+    }
+
+    const { executor, ...requestContext } = request;
+
+    return {
+      executor,
+      request: {
+        ...requestContext,
+        executionProvider: requestedProvider,
+      },
+    };
+  }
+
+  private async executeWithPreparedExecutor(input: {
+    prepared: SdkPreparedPaidRequestReady;
+    delegatedExecution: DelegatedPreparedExecution;
+    authorization: PreparedRequestExecutorInput['authorization'];
+  }): Promise<SdkDelegatedExecutionResult> {
+    try {
+      return sdkDelegatedExecutionResultSchema.parse(
+        await input.delegatedExecution.executor.execute({
+          prepared: input.prepared,
+          authorization: input.authorization,
+          request: input.delegatedExecution.request,
+        }),
+      );
+    } catch (error) {
+      return this.buildDelegatedTransportLossResult(
+        input.prepared.challenge.protocol,
+        error,
+      );
+    }
+  }
+
+  private buildDelegatedTransportLossResult(
+    protocol: PaidProtocol,
+    error: unknown,
+  ): SdkDelegatedExecutionResult {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Delegated executor failed before returning a normalized result.';
+
+    return sdkDelegatedExecutionResultSchema.parse({
+      protocol,
+      executionStatus: 'inconclusive',
+      settlementEvidenceClass: 'none',
+      merchantOutcome: 'no_response',
+      diagnostic: {
+        code: 'merchant_transport_lost',
+        message,
+      },
+      protocolArtifacts: {
+        delegatedExecutorError:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+              }
+            : {
+                message: String(error),
+              },
       },
     });
   }
@@ -1862,6 +2049,7 @@ export function createAgentPayClient(options: AgentPayClientOptions) {
 
 export * from './agent-harness.js';
 export * from './contracts.js';
+export * from './executors.js';
 export * from './harness-instructions.js';
 export { detectChallengeFromResponse, type DetectedChallenge } from './challenge-detection.js';
 export { sdkClientVersion, sdkClientVersionHeaderName } from './version.js';

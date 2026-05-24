@@ -1,6 +1,6 @@
 {
   "name": "@402flow/sdk",
-  "version": "0.1.0-alpha.23",
+  "version": "0.1.0-alpha.24",
   "description": "Paid HTTP SDK for AI agents with an inspectable prepare/execute flow.",
   "private": false,
   "type": "module",
@@ -44,6 +44,7 @@
     "build": "npm run clean && tsc -p tsconfig.json",
     "check": "npm run lint && npm test",
     "clean": "node -e \"const fs = require('node:fs'); for (const path of ['dist', 'tsconfig.tsbuildinfo', 'tsconfig.typecheck.tsbuildinfo']) { fs.rmSync(path, { recursive: true, force: true }); }\"",
+    "example:dexter-delegated-executor": "npm run build && node examples/dexter-delegated-executor.mjs",
     "example:openai-harness": "npm run build && node examples/openai-agent-harness.mjs",
     "example:openai-tools-quickstart": "npm run build && node examples/openai-tools-quickstart.mjs",
     "lint": "eslint src vitest.config.ts && npm run typecheck",
@@ -62,6 +63,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@dexterai/x402": "^3.9.0",
     "@eslint/js": "^9.22.0",
     "@types/node": "^22.13.10",
     "@vitest/coverage-v8": "^3.0.8",

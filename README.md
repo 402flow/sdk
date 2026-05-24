@@ -324,6 +324,118 @@ if (prepared.kind === 'ready') {
 
 If preparation does not return `kind === 'ready'`, that is not necessarily an error. It means this exact request did not currently resolve to a payable executable path. The caller can accept that result, run a normal non-paid path, or revise and prepare again.
 
+### Delegated Execution With Custom Executors
+
+`executePreparedRequest()` now supports governed delegated execution through a caller-supplied executor interface.
+
+This lets the SDK keep authorization, policy, receipts, and final outcome normalization in the 402flow control plane while handing the final paid merchant call to a provider-specific executor owned by the host app or a separate integration package.
+
+The core SDK stays provider-neutral. That means third-party payment clients such as Dexter or pay.sh should live in the host app's own dependency graph, not inside `@402flow/sdk` itself.
+
+The flow is:
+
+1. prepare the exact request locally with `preparePaidRequest()`
+2. ask the control plane to authorize delegated execution
+3. if authorized, let the supplied executor perform the actual paid merchant request
+4. finalize the normalized executor result back through the control plane
+5. return the same stable SDK result or `FetchPaidError` contract the caller already uses elsewhere
+
+If the control plane denies authorization, the delegated executor is never invoked.
+
+```ts
+import {
+  createJsonRequestBody,
+  type PreparedRequestExecutorInput,
+  type PreparedRequestExecutor,
+} from '@402flow/sdk';
+
+async function callDexter(
+  prepared: PreparedRequestExecutorInput['prepared'],
+) {
+  // Replace this with your real Dexter SDK call.
+  return {
+    status: 200,
+    body: { ok: true },
+    settlementReference: 'settlement-ref-1',
+    paymentReference: 'payment-ref-1',
+  };
+}
+
+function mapDexterResult(
+  prepared: PreparedRequestExecutorInput['prepared'],
+  result: Awaited<ReturnType<typeof callDexter>>,
+) {
+  return {
+    protocol: prepared.protocol,
+    executionStatus: 'succeeded' as const,
+    settlementEvidenceClass: 'settled' as const,
+    merchantOutcome: 'success_response' as const,
+    merchantResponse: {
+      status: result.status,
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(result.body),
+    },
+    settlementReference: result.settlementReference,
+    paymentReference: result.paymentReference,
+  };
+}
+
+const dexterExecutor: PreparedRequestExecutor = {
+  provider: 'dexter',
+  async execute({ prepared }) {
+    const dexterResult = await callDexter(prepared);
+    return mapDexterResult(prepared, dexterResult);
+  },
+};
+
+const prepared = await client.preparePaidRequest(
+  'https://merchant.example.com/images/generate',
+  {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: createJsonRequestBody({
+      prompt: 'foggy coastline',
+    }),
+  },
+);
+
+if (prepared.kind === 'ready') {
+  const result = await client.executePreparedRequest(prepared, {
+    description: 'generate image through delegated execution',
+    executionProvider: 'dexter',
+    executor: dexterExecutor,
+  });
+
+  console.log('paid response status:', result.response.status);
+}
+```
+
+This snippet shows the intended split directly: your host-owned code does the provider call and maps it into the delegated execution contract, while the SDK still owns authorize, finalize, and the outward result shape. For a real host-owned Dexter integration that performs the paid call, see `examples/dexter-delegated-executor.mjs`.
+
+Responsibility split:
+
+1. the SDK asks the control plane for delegated authorization
+2. if authorized, the SDK invokes your executor
+3. your executor performs the provider-specific paid request and returns `SdkDelegatedExecutionResult`
+4. the SDK finalizes that result with the control plane
+5. the SDK returns the same outward `PaidResponse` or `FetchPaidError` contract as the direct path
+
+If your host app wants to execute through Dexter, pay.sh, or another provider, that integration should install and own the third-party SDK directly. `@402flow/sdk` only owns the executor contract and the governed authorize/finalize flow.
+
+For a repo-local host-owned Dexter example, see `examples/dexter-delegated-executor.mjs` and run:
+
+```bash
+export DEXTER_EVM_PRIVATE_KEY="..."
+
+npm run example:dexter-delegated-executor -- \
+  "https://merchant.example.com/paid-endpoint" \
+  '{"topic":"sdk integration rollout","audience":"platform engineers","format":"bullets"}'
+```
+
 ## Prepared Result Semantics
 
 `preparePaidRequest()` separates request checking from paid execution.

@@ -88,6 +88,16 @@ export const paidRequestHttpMethodSchema = z.enum([
 ]);
 export type PaidRequestHttpMethod = z.infer<typeof paidRequestHttpMethodSchema>;
 
+export const paidRequestExecutionProviderSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][a-z0-9._-]*$/);
+export type PaidRequestExecutionProvider = z.infer<
+  typeof paidRequestExecutionProviderSchema
+>;
+
 export const paidRequestReasonCodeSchema = z.enum([
   'policy_allow',
   'policy_denied',
@@ -220,6 +230,7 @@ export const paidRequestContextSchema = z.object({
   agent: externalIdSchema,
   description: z.string().min(1).max(200).optional(),
   metadata: z.record(z.unknown()).optional(),
+  executionProvider: paidRequestExecutionProviderSchema.optional(),
   attribution: z
     .object({
       discoverySource: z
@@ -516,6 +527,9 @@ export type SdkPaymentDecisionRequest = z.infer<
   typeof sdkPaymentDecisionRequestSchema
 >;
 
+export const sdkPaymentAuthorizationRequestSchema = sdkPaymentDecisionRequestSchema;
+export type SdkPaymentAuthorizationRequest = SdkPaymentDecisionRequest;
+
 /** Durable receipt shape returned after the control plane records an outcome. */
 export const sdkReceiptSchema = z.object({
   receiptId: z.string().uuid(),
@@ -556,6 +570,79 @@ export const sdkMerchantResponseSchema = z.object({
   body: z.string().default(''),
 });
 export type SdkMerchantResponse = z.infer<typeof sdkMerchantResponseSchema>;
+
+export const sdkDelegatedExecutionStatusSchema = z.enum([
+  'succeeded',
+  'failed',
+  'inconclusive',
+  'preflight_failed',
+]);
+export type SdkDelegatedExecutionStatus = z.infer<
+  typeof sdkDelegatedExecutionStatusSchema
+>;
+
+export const sdkDelegatedMerchantOutcomeSchema = z.enum([
+  'success_response',
+  'failure_response',
+  'no_response',
+  'unknown',
+]);
+export type SdkDelegatedMerchantOutcome = z.infer<
+  typeof sdkDelegatedMerchantOutcomeSchema
+>;
+
+export const sdkDelegatedExecutionDiagnosticCodeSchema = z.enum([
+  'preflight_incompatible',
+  'merchant_rejected',
+  'merchant_execution_failed',
+  'merchant_transport_lost',
+  'settlement_proof_conflict',
+]);
+export type SdkDelegatedExecutionDiagnosticCode = z.infer<
+  typeof sdkDelegatedExecutionDiagnosticCodeSchema
+>;
+
+export const sdkDelegatedExecutionResultSchema = z.object({
+  protocol: paidRequestProtocolSchema,
+  executionStatus: sdkDelegatedExecutionStatusSchema,
+  settlementEvidenceClass: settlementEvidenceClassSchema,
+  merchantOutcome: sdkDelegatedMerchantOutcomeSchema,
+  settlementReference: z.string().min(1).max(255).optional(),
+  paymentReference: z.string().min(1).max(255).optional(),
+  evidenceSource: paymentProofSourceSchema.optional(),
+  signerSubmissionEvidence: z.record(z.unknown()).optional(),
+  merchantResponse: sdkMerchantResponseSchema.optional(),
+  diagnostic: z
+    .object({
+      code: sdkDelegatedExecutionDiagnosticCodeSchema,
+      message: z.string().min(1).optional(),
+    })
+    .optional(),
+  protocolArtifacts: z.record(z.unknown()).optional(),
+});
+export type SdkDelegatedExecutionResult = z.infer<
+  typeof sdkDelegatedExecutionResultSchema
+>;
+
+export const sdkPaymentFinalizationRequestSchema = z.object({
+  paidRequestId: z.string().uuid(),
+  paymentAttemptId: z.string().uuid(),
+  result: sdkDelegatedExecutionResultSchema,
+});
+export type SdkPaymentFinalizationRequest = z.infer<
+  typeof sdkPaymentFinalizationRequestSchema
+>;
+
+export const sdkPaymentAuthorizationAuthorizedResponseSchema = z.object({
+  outcome: z.literal('authorized'),
+  paidRequestId: z.string().uuid(),
+  paymentAttemptId: z.string().uuid(),
+  reasonCode: paidRequestReasonCodeSchema,
+  reason: z.string().min(1),
+});
+export type SdkPaymentAuthorizationAuthorizedResponse = z.infer<
+  typeof sdkPaymentAuthorizationAuthorizedResponseSchema
+>;
 
 export const sdkPaymentDecisionAllowResponseSchema = z.object({
   outcome: z.literal('allow'),
@@ -641,6 +728,23 @@ export const sdkPaymentDecisionResponseSchema = z.discriminatedUnion('outcome', 
 ]);
 export type SdkPaymentDecisionResponse = z.infer<
   typeof sdkPaymentDecisionResponseSchema
+>;
+
+export const sdkPaymentAuthorizationResponseSchema = z.discriminatedUnion(
+  'outcome',
+  [
+    sdkPaymentAuthorizationAuthorizedResponseSchema,
+    sdkPaymentDecisionAllowResponseSchema,
+    sdkPaymentDecisionPaidFulfillmentFailedResponseSchema,
+    sdkPaymentDecisionExecutingResponseSchema,
+    sdkPaymentDecisionPreflightFailedResponseSchema,
+    sdkPaymentDecisionExecutionFailedResponseSchema,
+    sdkPaymentDecisionInconclusiveResponseSchema,
+    sdkPaymentDecisionDenyResponseSchema,
+  ],
+);
+export type SdkPaymentAuthorizationResponse = z.infer<
+  typeof sdkPaymentAuthorizationResponseSchema
 >;
 
 /** Receipt lookup response returned by AgentPayClient.lookupReceipt(). */
