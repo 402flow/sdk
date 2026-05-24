@@ -25,15 +25,22 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            third-party-executors/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm --prefix third-party-executors ci
 
       - name: Validate source tree
-        run: npm run check
+        run: npm run check:all
 
-      - name: Verify package can build and dry pack
-        run: npm run pack:check
+      - name: Verify packages can build and root package can dry pack
+        run: |
+          npm run pack:check
+          npm --prefix third-party-executors run build
 
       - name: Pack SDK artifact
         run: |
@@ -48,7 +55,7 @@ jobs:
           TMP_DIR="$(mktemp -d)"
           cd "$TMP_DIR"
           npm init -y >/dev/null 2>&1
-          npm install "/home/runner/work/sdk/sdk/artifacts/$TARBALL" >/dev/null 2>&1
+          npm install "$GITHUB_WORKSPACE/artifacts/$TARBALL" >/dev/null 2>&1
           node --input-type=module -e "const sdk = await import('@402flow/sdk'); if (!sdk.AgentPayClient || !sdk.createAgentPayClient || !sdk.createJsonRequestBody) { throw new Error('Packed artifact missing expected root exports.'); }"
 
       - name: Upload packed artifact
