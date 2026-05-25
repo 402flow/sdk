@@ -1,11 +1,52 @@
 {
   "name": "@402flow/sdk-third-party-executors",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.0-alpha.26",
   "type": "module",
-  "description": "Repo-local third-party executor adapters and proofs for @402flow/sdk.",
+  "description": "Official supported delegated-execution adapters for @402flow/sdk.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "license": "Apache-2.0",
+  "author": "402flow",
+  "homepage": "https://github.com/402flow/sdk/tree/main/third-party-executors#readme",
+  "bugs": {
+    "url": "https://github.com/402flow/sdk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/402flow/sdk.git",
+    "directory": "third-party-executors"
+  },
+  "keywords": [
+    "402flow",
+    "sdk",
+    "x402",
+    "adapters",
+    "dexter",
+    "pay.sh"
+  ],
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "peerDependencies": {
+    "@402flow/sdk": "0.1.0-alpha.26"
+  },
+  "peerDependenciesMeta": {
+    "@402flow/sdk": {
+      "optional": true
+    }
   },
   "overrides": {
     "jayson": {
@@ -19,6 +60,9 @@
     "example:dexter-delegated-executor": "npm run build && node examples/dexter-delegated-executor.mjs",
     "example:pay-sh-delegated-executor": "npm run build && node examples/pay-sh-delegated-executor.mjs",
     "lint": "eslint src test vitest.config.ts && npm run typecheck",
+    "pack:check": "npm run build && npm pack --dry-run",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

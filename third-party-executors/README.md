@@ -1,23 +1,39 @@
-# Third-Party Executors
+# @402flow/sdk-third-party-executors
 
-This repo-local package holds third-party executor adapters that are intentionally separate from the main `@402flow/sdk` package.
+Official supported delegated-execution adapters for `@402flow/sdk`.
+
+This package is intentionally separate from the main `@402flow/sdk` package so the core SDK stays provider-neutral while officially supported provider adapters can evolve on their own dependency surface.
 
 Current scope:
 
-1. Dexter delegated-execution adapter and proof coverage
-2. room for future third-party executors such as pay.sh under the same boundary
+1. Dexter delegated-execution adapter
+2. pay.sh x402 Solana exact delegated-execution adapter
 
-## Why This Package Exists
+## Install
 
-`@402flow/sdk` stays provider-neutral.
+Install this package alongside the matching `@402flow/sdk` version.
 
-Third-party executor adapters belong here when they:
+```bash
+npm install @402flow/sdk @402flow/sdk-third-party-executors
+```
 
-1. depend on external provider SDKs
-2. need their own tests or examples
-3. should not affect the default dependency or audit surface of the main SDK package
+If you pin versions explicitly, pin both packages to the same version:
 
-## Boundary
+```bash
+npm install @402flow/sdk@<version> @402flow/sdk-third-party-executors@<version>
+```
+
+This adapter package is versioned and supported in lockstep with `@402flow/sdk`, so keep the two package versions aligned.
+
+## Usage
+
+```ts
+import { AgentPayClient } from '@402flow/sdk';
+import {
+  createDexterExecutor,
+  createPayShExecutor,
+} from '@402flow/sdk-third-party-executors';
+```
 
 The main SDK package owns:
 
@@ -29,24 +45,19 @@ This package owns:
 
 1. provider-specific adapter implementations
 2. provider-specific proof tests
-3. repo-local examples that exercise those adapters
+3. source-level examples in this repo under `third-party-executors/examples/`
 
-## Install And Use
+## In-Repo Verification
 
-```bash
-cd third-party-executors
-npm install
-```
-
-Useful commands:
+If you are working in this repo, useful commands are:
 
 1. `npm run check`
-2. `npm run example:dexter-delegated-executor -- --help`
+2. `npm run pack:check`
+3. `npm run example:dexter-delegated-executor -- --help`
+4. `npm run example:pay-sh-delegated-executor -- --help`
 
 From the SDK root, you can also run `npm run check:all` to validate both the main SDK package and this package in one pass.
 
-## Rule Of Thumb
+## Release Order
 
-If code belongs to the published provider-neutral SDK, keep it in the main package `src/`.
-
-If code exists to adapt or prove a specific third-party executor such as Dexter or pay.sh, keep it in this package.
+When publishing from this repo, publish the main `@402flow/sdk` package first, then publish `@402flow/sdk-third-party-executors` after the matching SDK version is available.

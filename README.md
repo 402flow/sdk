@@ -426,11 +426,21 @@ Responsibility split:
 
 If your host app wants to execute through Dexter, pay.sh, or another provider, that integration should install and own the third-party SDK directly. `@402flow/sdk` only owns the executor contract and the governed authorize/finalize flow.
 
-The repo keeps third-party executor proofs in the separate `third-party-executors/` package so the main `@402flow/sdk` install path stays provider-neutral.
+Official supported adapters live in the separate `@402flow/sdk-third-party-executors` package so the main `@402flow/sdk` install path stays provider-neutral.
 
-That package is a private repo-local set of reference adapters, not part of the published `@402flow/sdk` package itself.
+```bash
+npm install @402flow/sdk @402flow/sdk-third-party-executors
+```
 
-Current repo-local adapters:
+If you pin versions explicitly, pin both packages to the same version:
+
+```bash
+npm install @402flow/sdk@<version> @402flow/sdk-third-party-executors@<version>
+```
+
+The adapter package is versioned and supported in lockstep with `@402flow/sdk`, so keep the two package versions aligned. In this repo, the published adapter package source lives under `third-party-executors/`.
+
+Current official adapters:
 
 | Adapter | Current scope | Key dependencies |
 | --- | --- | --- |
@@ -622,6 +632,10 @@ When unset, first-party fixtures default to the self-hosted demo merchant at `ht
 
 ## Publish
 
+Publish the main SDK package first. Publish `@402flow/sdk-third-party-executors` second, after the matching SDK version is available.
+
+Main SDK package:
+
 ```bash
 npm run install:all
 npm run check:all
@@ -630,3 +644,13 @@ npm publish --access public
 ```
 
 `npm publish` now also runs `npm run check:all` through the root `prepublishOnly` hook, so the repo-wide test pass is enforced before publish even if you skip that step manually.
+
+Adapter package:
+
+```bash
+cd third-party-executors
+npm install
+npm run check
+npm run pack:check
+npm publish --access public
+```
