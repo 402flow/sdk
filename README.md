@@ -428,6 +428,17 @@ If your host app wants to execute through Dexter, pay.sh, or another provider, t
 
 The repo keeps third-party executor proofs in the separate `third-party-executors/` package so the main `@402flow/sdk` install path stays provider-neutral.
 
+That package is a private repo-local set of reference adapters, not part of the published `@402flow/sdk` package itself.
+
+Current repo-local adapters:
+
+| Adapter | Current scope | Key dependencies |
+| --- | --- | --- |
+| Dexter | Host-owned delegated execution against Dexter's paid request client | `@dexterai/x402` |
+| pay.sh | Host-owned x402 Solana exact delegated execution | `@x402/core`, `@x402/svm`, `@solana/kit` |
+
+The pay.sh adapter intentionally does not depend on `@solana/pay` today. The current proof targets pay.sh's x402 Solana exact flow, so challenge parsing, signed payment payload creation, and paid response parsing come from `@x402/core` plus `@x402/svm`, while `@solana/kit` only supplies the signer. `@solana/pay` becomes relevant when the repo adds a separate Solana Pay or MPP-specific adapter path.
+
 For a repo-wide verification pass from the SDK root, run:
 
 ```bash
@@ -448,6 +459,16 @@ npm run example:dexter-delegated-executor -- \
   "https://merchant.example.com/paid-endpoint" \
   '{"topic":"sdk integration rollout","audience":"platform engineers","format":"bullets"}'
 ```
+
+For a repo-local host-owned pay.sh x402 example, run:
+
+```bash
+cd third-party-executors
+npm install
+npm run example:pay-sh-delegated-executor -- --help
+```
+
+The pay.sh example expects the standard SDK auth environment plus a local Solana signer path in `PAY_SH_SOLANA_KEYPAIR_PATH`. Run the `--help` form first to see the full required environment and argument contract.
 
 ## Prepared Result Semantics
 

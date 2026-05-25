@@ -13,16 +13,20 @@
     }
   },
   "scripts": {
-    "build": "npm --prefix .. run build && npm run clean && tsc -p tsconfig.json",
+    "build": "npm --prefix .. run build && npm run clean && tsc -p tsconfig.build.json",
     "check": "npm run lint && npm test",
-    "clean": "node -e \"const fs = require('node:fs'); for (const path of ['dist', 'tsconfig.tsbuildinfo', 'tsconfig.typecheck.tsbuildinfo']) { fs.rmSync(path, { recursive: true, force: true }); }\"",
+    "clean": "node -e \"const fs = require('node:fs'); for (const path of ['dist', 'tsconfig.build.tsbuildinfo', 'tsconfig.tsbuildinfo', 'tsconfig.typecheck.tsbuildinfo']) { fs.rmSync(path, { recursive: true, force: true }); }\"",
     "example:dexter-delegated-executor": "npm run build && node examples/dexter-delegated-executor.mjs",
+    "example:pay-sh-delegated-executor": "npm run build && node examples/pay-sh-delegated-executor.mjs",
     "lint": "eslint src test vitest.config.ts && npm run typecheck",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dexterai/x402": "^3.9.0"
+    "@dexterai/x402": "^3.9.0",
+    "@solana/kit": "^6.5.0",
+    "@x402/core": "^2.13.0",
+    "@x402/svm": "^2.13.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",

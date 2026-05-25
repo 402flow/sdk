@@ -20,10 +20,10 @@ import type {
   SdkDelegatedExecutionResult,
   SdkDelegatedExecutionStatus,
   SdkDelegatedMerchantOutcome,
-  SdkMerchantResponse,
-  SdkPreparedPaidRequestReady,
   SettlementEvidenceClass,
 } from '@402flow/sdk';
+
+import { buildPreparedRequestInit, toSdkMerchantResponse } from './request-utils.js';
 
 export type DexterExecutorOptions = {
   wallets: WalletSet;
@@ -38,23 +38,13 @@ export function createDexterExecutor(
     async execute(input) {
       const result = await payAndFetch(
         input.prepared.request.url,
-        buildDexterRequestInit(input.prepared),
+        buildPreparedRequestInit(input.prepared),
         options.wallets,
         options.payAndFetchOptions ?? {},
       );
 
       return mapDexterPayResult(input, result);
     },
-  };
-}
-
-function buildDexterRequestInit(
-  prepared: SdkPreparedPaidRequestReady,
-): RequestInit {
-  return {
-    method: prepared.request.method,
-    ...(prepared.request.headers ? { headers: prepared.request.headers } : {}),
-    ...(prepared.request.body !== undefined ? { body: prepared.request.body } : {}),
   };
 }
 
@@ -146,31 +136,6 @@ async function mapDexterPayResult(
     },
     protocolArtifacts: buildDexterProtocolArtifacts(result),
   };
-}
-
-async function toSdkMerchantResponse(
-  response: Response,
-): Promise<SdkMerchantResponse> {
-  return {
-    status: response.status,
-    headers: normalizeHeaders(response.headers) ?? {},
-    body: await response.text(),
-  };
-}
-
-function normalizeHeaders(headers: HeadersInit | undefined) {
-  if (!headers) {
-    return undefined;
-  }
-
-  const normalizedHeaders: Record<string, string> = {};
-  const headerMap = new Headers(headers);
-
-  headerMap.forEach((value, key) => {
-    normalizedHeaders[key] = value;
-  });
-
-  return normalizedHeaders;
 }
 
 function mapDexterFailure(

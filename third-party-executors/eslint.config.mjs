@@ -23,7 +23,7 @@ export default tseslint.config(
     languageOptions: {
       globals: globals.node,
       parserOptions: {
-        project: ['./tsconfig.typecheck.json'],
+        project: ['./tsconfig.json'],
         tsconfigRootDir,
       },
     },

@@ -1,15 +1,14 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": false,
+    "composite": false,
+    "incremental": false,
+    "noEmit": true,
     "paths": {
       "*": ["./*"],
-      "@402flow/sdk": ["../dist/index.d.ts"]
-    },
-    "outDir": "dist",
-    "rootDir": "src",
-    "composite": true
+      "@402flow/sdk": ["../src/index.ts"]
+    }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["test/**/*.ts", "src/**/*.test.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+  "exclude": []
 }
