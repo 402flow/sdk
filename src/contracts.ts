@@ -109,6 +109,7 @@ export const paidRequestReasonCodeSchema = z.enum([
   'challenge_execution_identity_ambiguous',
   'payment_execution_in_progress',
   'preflight_incompatible',
+  'preflight_dependency_failed',
   'merchant_rejected',
   'merchant_execution_failed',
   'settlement_proof_conflict',
@@ -593,6 +594,7 @@ export type SdkDelegatedMerchantOutcome = z.infer<
 
 export const sdkDelegatedExecutionDiagnosticCodeSchema = z.enum([
   'preflight_incompatible',
+  'preflight_dependency_failed',
   'merchant_rejected',
   'merchant_execution_failed',
   'merchant_transport_lost',
@@ -659,6 +661,11 @@ const sdkMerchantFailureReasonCodeSchema = z.enum([
   'merchant_execution_failed',
 ]);
 
+const sdkPreflightFailureReasonCodeSchema = z.enum([
+  'preflight_incompatible',
+  'preflight_dependency_failed',
+]);
+
 export const sdkPaymentDecisionPaidFulfillmentFailedResponseSchema = z.object({
   outcome: z.literal('paid_fulfillment_failed'),
   paidRequestId: z.string().uuid(),
@@ -686,7 +693,7 @@ export const sdkPaymentDecisionPreflightFailedResponseSchema = z.object({
   outcome: z.literal('preflight_failed'),
   paidRequestId: z.string().uuid(),
   paymentAttemptId: z.string().uuid(),
-  reasonCode: z.literal('preflight_incompatible'),
+  reasonCode: sdkPreflightFailureReasonCodeSchema,
   reason: z.string().min(1),
   evidence: z.record(z.unknown()).optional(),
 });
