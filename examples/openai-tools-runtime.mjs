@@ -139,11 +139,37 @@ export function createOpenAiClient(apiKey) {
         },
         body: JSON.stringify(body),
       });
-      const responseBody = await response.json();
+
+      const responseText = await response.text();
+      let responseBody = null;
+
+      if (responseText.length > 0) {
+        try {
+          responseBody = JSON.parse(responseText);
+        } catch {
+          responseBody = responseText;
+        }
+      }
 
       if (!response.ok) {
-        const message = responseBody?.error?.message ?? response.statusText;
+        const message = (
+          typeof responseBody === 'object'
+          && responseBody !== null
+          && 'error' in responseBody
+          && typeof responseBody.error === 'object'
+          && responseBody.error !== null
+          && 'message' in responseBody.error
+          && typeof responseBody.error.message === 'string'
+        )
+          ? responseBody.error.message
+          : typeof responseBody === 'string' && responseBody.trim().length > 0
+            ? responseBody.trim()
+            : response.statusText;
         throw new Error(`OpenAI Responses API failed: ${message}`);
+      }
+
+      if (typeof responseBody !== 'object' || responseBody === null) {
+        throw new Error('OpenAI Responses API returned a non-JSON success response.');
       }
 
       return responseBody;

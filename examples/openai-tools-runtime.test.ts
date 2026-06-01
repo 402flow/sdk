@@ -6,6 +6,7 @@ import {
 } from '../src/index.js';
 import {
   createToolHandlers,
+  createOpenAiClient,
   defaultInstructions,
   defaultToolDefinitions,
 } from './openai-tools-runtime.mjs';
@@ -23,6 +24,30 @@ describe('openai tools runtime defaults', () => {
       );
 
       expect(toolDefinition?.description).toBe(spec.description);
+    }
+  });
+});
+
+describe('openai client error parsing', () => {
+  it('surfaces plain-text error responses without throwing a JSON parse error', async () => {
+    const fetchMock = vi.fn(async () => new Response('upstream cause: overloaded gateway', {
+      status: 502,
+      statusText: 'Bad Gateway',
+      headers: {
+        'content-type': 'text/plain',
+      },
+    }));
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const client = createOpenAiClient('test-key');
+
+      await expect(client.createResponse({ model: 'gpt-5.4' })).rejects.toThrow(
+        'OpenAI Responses API failed: upstream cause: overloaded gateway',
+      );
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });
