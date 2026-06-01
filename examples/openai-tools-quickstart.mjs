@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { AgentHarness } from '../dist/index.js';
+import { buildFirstPartyMerchantUrl } from './openai-harness/first-party-merchant.mjs';
 import {
   createClientFromEnv,
   createOpenAiClient,
@@ -13,10 +14,14 @@ import {
 } from './openai-tools-runtime.mjs';
 
 function printHelp() {
+  const defaultResearchBriefUrl = buildFirstPartyMerchantUrl(
+    '/demo-merchant/research-brief/solana-devnet',
+  );
+
   console.log(`Minimal OpenAI tools quickstart for @402flow/sdk
 
 Usage:
-  npm run example:openai-tools-quickstart -- "Prepare and execute a paid POST request to http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet with JSON body {\"topic\":\"sdk integration rollout\",\"audience\":\"platform engineers\",\"format\":\"bullets\"}"
+  npm run example:openai-tools-quickstart -- "Prepare and execute a paid POST request to ${defaultResearchBriefUrl} with JSON body {\"topic\":\"sdk integration rollout\",\"audience\":\"platform engineers\",\"format\":\"bullets\"}"
 
 Required environment:
   OPENAI_API_KEY

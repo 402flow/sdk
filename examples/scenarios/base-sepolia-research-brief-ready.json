@@ -1,7 +1,7 @@
 {
   "name": "base-sepolia-research-brief-ready",
   "description": "Canonical local agentic scenario against the self-hosted Base Sepolia merchant research brief route with a valid shaped body for paid execution.",
-  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/base-sepolia",
+  "targetUrl": "/demo-merchant/research-brief/base-sepolia",
   "method": "POST",
   "headers": {
     "content-type": "application/json"

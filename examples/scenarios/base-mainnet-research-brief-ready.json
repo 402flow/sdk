@@ -1,7 +1,7 @@
 {
   "name": "base-mainnet-research-brief-ready",
   "description": "Canonical local agentic scenario against the self-hosted Base mainnet merchant research brief route with a valid shaped body for paid execution.",
-  "targetUrl": "http://127.0.0.1:4123/demo-merchant/research-brief/base-mainnet",
+  "targetUrl": "/demo-merchant/research-brief/base-mainnet",
   "method": "POST",
   "headers": {
     "content-type": "application/json"

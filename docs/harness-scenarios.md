@@ -18,40 +18,48 @@ Plan-specific commands:
 
 1. `npm run scenario:all`: full mixed sweep (first-party + third-party + mock)
 2. `npm run scenario:core`: core proving sweep (first-party + mock)
-3. `npm run scenario:first-party`: first-party self-hosted demo-merchant scenarios only
+3. `npm run scenario:first-party`: first-party demo-merchant scenarios only
 4. `npm run scenario:third-party`: third-party merchant compatibility scenarios only
 5. `npm run scenario:mock`: fixture-driven mock outcomes only
 
-Current first-party scenarios target the self-hosted demo merchant at `http://127.0.0.1:4123`. When the public AWS demo-merchant host is ready, move first-party scenario URLs there without collapsing first-party and third-party plans.
+First-party scenario fixtures now store only the stable demo-merchant route path in the JSON files, for example `/demo-merchant/research-brief/solana-devnet`. At runtime, the scenario loader resolves that path against `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL`, which defaults to `https://demo-merchant-staging.402flow.ai`.
 
-Use one env variable for the cutover:
+The default hosted first-party base URL is:
+
+```text
+https://demo-merchant-staging.402flow.ai
+```
+
+If you want repo-local self-hosted first-party runs instead, override it with:
 
 ```bash
-export X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="https://demo-merchant.402flow.ai"
+export X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="http://127.0.0.1:4123"
 ```
 
 Behavior:
 
-1. only first-party fixtures with local demo-merchant URLs are rewritten
-2. third-party fixtures are unchanged
-3. when unset, first-party fixtures continue using `http://127.0.0.1:4123`
+1. first-party fixtures use `/demo-merchant/...` paths instead of embedding a base URL
+2. those first-party paths are resolved against the configured first-party base URL
+3. absolute URLs, including third-party fixtures, are used as written
+4. when unset, first-party paths default to `https://demo-merchant-staging.402flow.ai`
+5. set the env var to `http://127.0.0.1:4123` for repo-local self-hosted runs
 
 Shell-exported values still win when you need to temporarily point the SDK at a different control plane or auth context.
 
 Current named scenarios:
 
-1. `base-sepolia-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Base Sepolia merchant research brief route
-2. `base-sepolia-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-3. `base-sepolia-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-4. `base-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Base mainnet merchant research brief route
-5. `base-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-6. `base-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-7. `solana-devnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana devnet merchant research brief route
-8. `solana-devnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-9. `solana-devnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-10. `solana-mainnet-research-brief-bazaar-revise`: canonical local Bazaar-driven revise scenario against the self-hosted Solana mainnet merchant research brief route
-11. `solana-mainnet-research-brief-ready`: canonical local agentic scenario against the same route with a complete shaped body ready for execution
-12. `solana-mainnet-research-brief-revise`: canonical local agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+1. `base-sepolia-research-brief-bazaar-revise`: canonical first-party Bazaar-driven revise scenario against the Base Sepolia merchant research brief route
+2. `base-sepolia-research-brief-ready`: canonical first-party agentic scenario against the same route with a complete shaped body ready for execution
+3. `base-sepolia-research-brief-revise`: canonical first-party agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+4. `base-mainnet-research-brief-bazaar-revise`: canonical first-party Bazaar-driven revise scenario against the Base mainnet merchant research brief route
+5. `base-mainnet-research-brief-ready`: canonical first-party agentic scenario against the same route with a complete shaped body ready for execution
+6. `base-mainnet-research-brief-revise`: canonical first-party agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+7. `solana-devnet-research-brief-bazaar-revise`: canonical first-party Bazaar-driven revise scenario against the Solana devnet merchant research brief route
+8. `solana-devnet-research-brief-ready`: canonical first-party agentic scenario against the same route with a complete shaped body ready for execution
+9. `solana-devnet-research-brief-revise`: canonical first-party agentic scenario against the same route, starting incomplete while also providing advisory external metadata
+10. `solana-mainnet-research-brief-bazaar-revise`: canonical first-party Bazaar-driven revise scenario against the Solana mainnet merchant research brief route
+11. `solana-mainnet-research-brief-ready`: canonical first-party agentic scenario against the same route with a complete shaped body ready for execution
+12. `solana-mainnet-research-brief-revise`: canonical first-party agentic scenario against the same route, starting incomplete while also providing advisory external metadata
 13. `nickeljoke-compat`: public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, with `POST` as part of the contract
 14. `auor-public-holidays-reasoning-revise`: GET scenario that derives required query params from merchant hints
 15. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
@@ -100,48 +108,49 @@ That means:
 
 They are useful for checking whether the model reports non-success outcomes honestly instead of defaulting to happy-path language.
 
-## Canonical Local Agentic Path
+## Canonical First-Party Paths
 
-The first product-representative local scenario is the self-hosted Solana devnet merchant research brief route:
-
-```text
-http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet
-```
-
-This is the canonical local path when request shaping should matter in a real agent loop.
-
-The matching local EVM testnet scenario path is:
+The default first product-representative scenario path is the staged Solana devnet merchant research brief route:
 
 ```text
-http://127.0.0.1:4123/demo-merchant/research-brief/base-sepolia
+https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-devnet
 ```
 
-The matching local EVM mainnet scenario path is:
+This is the canonical first-party path when request shaping should matter in a real agent loop.
+
+The matching EVM testnet scenario path is:
 
 ```text
-http://127.0.0.1:4123/demo-merchant/research-brief/base-mainnet
+https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-sepolia
 ```
 
-The matching real-money local mainnet scenario path is:
+The matching EVM mainnet scenario path is:
 
 ```text
-http://127.0.0.1:4123/demo-merchant/research-brief/solana-mainnet
+https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-mainnet
 ```
+
+The matching real-money mainnet scenario path is:
+
+```text
+https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-mainnet
+```
+
+If you want the same first-party paths against a self-hosted merchant, set `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="http://127.0.0.1:4123"` before running the scenarios.
 
 Prerequisites:
 
-1. local agent-pay infrastructure is running
-2. the local API is running, for example at `http://localhost:3001`
-3. the self-hosted demo merchant is running via `pnpm dev:demo-merchant`
-4. a local org and agent exist and can authenticate through the SDK
-5. one compatible Base or Solana execution rail is enabled for that org, depending on the scenario
-6. either `X402FLOW_BOOTSTRAP_KEY` or `X402FLOW_RUNTIME_TOKEN` is set
+1. a reachable 402flow control plane is running, with hosted staging as the default at `https://api-staging.402flow.ai`
+2. the demo merchant is reachable, or the self-hosted demo merchant is running via `pnpm dev:demo-merchant` if you overrode the first-party base URL
+3. an org and agent exist and can authenticate through the SDK
+4. one compatible Base or Solana execution rail is enabled for that org, depending on the scenario
+5. either `X402FLOW_BOOTSTRAP_KEY` or `X402FLOW_RUNTIME_TOKEN` is set
 
-Example local revise run:
+Example first-party revise run:
 
 ```bash
 export OPENAI_API_KEY="..."
-export X402FLOW_CONTROL_PLANE_BASE_URL="http://localhost:3001"
+export X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
 export X402FLOW_ORGANIZATION="acme-labs"
 export X402FLOW_AGENT="x402-demo-agent"
 export X402FLOW_BOOTSTRAP_KEY="..."
@@ -152,7 +161,7 @@ npm run example:openai-harness -- \
   --transcript-file ./tmp/scenario-runs/solana-devnet-research-brief-revise-run.json
 ```
 
-Run the scenario sweep from the SDK repo itself. Keep SDK scenario setup and credentials in this repo's `.env` so the examples can point at local `agent-pay` or future public demo merchants without a control-plane wrapper.
+Run the scenario sweep from the SDK repo itself. Keep SDK scenario setup and credentials in this repo's `.env` so the examples point at staging by default and can still be overridden for local `agent-pay` without a control-plane wrapper.
 
 Expected outcomes:
 
@@ -191,7 +200,7 @@ Important constraint: use `POST`. Compatibility behavior for `GET` can still lea
 
 Prerequisites:
 
-1. a running 402flow control plane, for example local `agent-pay` API at `http://localhost:3001`
+1. a running 402flow control plane, with hosted staging as the default at `https://api-staging.402flow.ai`
 2. an active organization and agent that the SDK can authenticate as
 3. a merchant record for `https://nickeljoke.vercel.app`
 4. a funded Base Sepolia execution rail enabled for that organization
@@ -201,7 +210,7 @@ Example live run:
 
 ```bash
 export OPENAI_API_KEY="..."
-export X402FLOW_CONTROL_PLANE_BASE_URL="http://localhost:3001"
+export X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
 export X402FLOW_ORGANIZATION="acme-labs"
 export X402FLOW_AGENT="x402-demo-agent"
 export X402FLOW_BOOTSTRAP_KEY="..."
@@ -218,7 +227,7 @@ External paid compatibility run for `https://x402.org/protected`:
 
 ```bash
 export OPENAI_API_KEY="..."
-export X402FLOW_CONTROL_PLANE_BASE_URL="http://localhost:3001"
+export X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
 export X402FLOW_ORGANIZATION="acme-labs"
 export X402FLOW_AGENT="x402-demo-agent"
 export X402FLOW_BOOTSTRAP_KEY="..."

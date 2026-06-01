@@ -111,7 +111,7 @@ The expected SDK environment values are:
 
 ```bash
 export OPENAI_API_KEY="..."
-export X402FLOW_CONTROL_PLANE_BASE_URL="https://402flow.ai"
+export X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
 export X402FLOW_ORGANIZATION="acme-labs"
 export X402FLOW_AGENT="reporting-worker"
 export X402FLOW_BOOTSTRAP_KEY="..."
@@ -119,7 +119,9 @@ export X402FLOW_BOOTSTRAP_KEY="..."
 
 Runtime-token auth also works if you set `X402FLOW_RUNTIME_TOKEN` instead of `X402FLOW_BOOTSTRAP_KEY`.
 
-That keeps the evaluation runner self-contained in the SDK repo. The control plane can still be local `agent-pay`, but the SDK examples no longer depend on reading another repository's env file.
+That keeps the evaluation runner self-contained in the SDK repo. The default control plane is staging, but you can still point it at local `agent-pay` when needed without reading another repository's env file.
+
+First-party examples default to the demo merchant at `https://demo-merchant-staging.402flow.ai`. Set `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="http://127.0.0.1:4123"` when you want repo-local self-hosted demo-merchant runs instead.
 
 ## Basic Run
 
@@ -132,7 +134,7 @@ npm run example:openai-tools-quickstart -- --help
 For the larger evaluation runner, use a direct prompt:
 
 ```bash
-npm run example:openai-harness -- --prompt "Prepare and execute a paid POST request to http://127.0.0.1:4123/demo-merchant/research-brief/solana-devnet with JSON body {\"topic\":\"sdk integration rollout\",\"audience\":\"platform engineers\",\"format\":\"bullets\"}"
+npm run example:openai-harness -- --prompt "Prepare and execute a paid POST request to https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-devnet with JSON body {\"topic\":\"sdk integration rollout\",\"audience\":\"platform engineers\",\"format\":\"bullets\"}"
 ```
 
 You can also use a named preset and scenario:

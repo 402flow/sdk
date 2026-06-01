@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildFirstPartyMerchantUrl,
+  defaultFirstPartyMerchantBaseUrl,
+} from './first-party-merchant.mjs';
+import {
   loadJsonPromptValue,
   loadOpenAiHarnessScenario,
 } from './inputs.mjs';
@@ -98,6 +102,59 @@ describe('openai agent harness input helpers', () => {
         audience: 'platform engineers',
       },
     });
+  });
+
+  it('resolves first-party scenario paths to the demo merchant by default', () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'sdk-harness-scenario-first-party-'));
+    const fixturePath = join(tempDirectory, 'scenario.json');
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        name: 'solana-devnet-research-brief-ready',
+        description: 'First-party staged demo merchant scenario.',
+        targetUrl: '/demo-merchant/research-brief/solana-devnet',
+        method: 'POST',
+      }),
+    );
+
+    expect(loadOpenAiHarnessScenario(fixturePath)).toEqual({
+      name: 'solana-devnet-research-brief-ready',
+      description: 'First-party staged demo merchant scenario.',
+      targetUrl: `${defaultFirstPartyMerchantBaseUrl}/demo-merchant/research-brief/solana-devnet`,
+      method: 'POST',
+    });
+  });
+
+  it('lets callers override the first-party merchant base URL explicitly', () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'sdk-harness-scenario-local-'));
+    const fixturePath = join(tempDirectory, 'scenario.json');
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        name: 'base-sepolia-research-brief-ready',
+        description: 'First-party self-hosted demo merchant scenario.',
+        targetUrl: '/demo-merchant/research-brief/base-sepolia',
+        method: 'POST',
+      }),
+    );
+
+    const previousBaseUrl = process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL;
+    process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL = 'http://127.0.0.1:4123';
+
+    try {
+      expect(loadOpenAiHarnessScenario(fixturePath)).toEqual({
+        name: 'base-sepolia-research-brief-ready',
+        description: 'First-party self-hosted demo merchant scenario.',
+        targetUrl: buildFirstPartyMerchantUrl('/demo-merchant/research-brief/base-sepolia'),
+        method: 'POST',
+      });
+    } finally {
+      if (previousBaseUrl === undefined) {
+        delete process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL;
+      } else {
+        process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL = previousBaseUrl;
+      }
+    }
   });
 
   it('allows scenarios to omit optional headers, body, and discovery metadata', () => {
