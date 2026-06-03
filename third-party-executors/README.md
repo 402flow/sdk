@@ -29,11 +29,13 @@ This adapter package is versioned and supported in lockstep with `@402flow/sdk`,
 
 ```ts
 import { AgentPayClient } from '@402flow/sdk';
-import {
-  createDexterExecutor,
-  createPayShExecutor,
-} from '@402flow/sdk-third-party-executors';
+import { createDexterExecutor } from '@402flow/sdk-third-party-executors/dexter';
+// or:
+import { createPayShExecutor } from '@402flow/sdk-third-party-executors/pay-sh';
 ```
+
+Prefer the provider-specific subpath you actually use. That keeps one adapter's
+dependency chain out of the other adapter's import path.
 
 The main SDK package owns:
 

@@ -124,10 +124,18 @@ console.log(result.receiptId);
 ```
 
 If the merchant does not require payment for that exact request, the SDK returns a passthrough response.
-If the merchant returns a payable challenge, the SDK resolves payment through the control plane and returns a durable paid outcome.
+If the merchant returns a payable challenge, the SDK asks the control plane for a paid decision, resolves payment, and returns a receipt-backed paid response.
 
 `result.response` is always the merchant HTTP response.
 SDK-owned payment metadata such as `paidRequestId`, `paymentAttemptId`, `receiptId`, and `receipt` stays on the SDK result instead of being injected into the merchant JSON body.
+
+### Important Probe Semantics
+
+When you do not supply `request.challenge` to `fetchPaid()` or `options.challenge` to `preparePaidRequest()`, the SDK first sends the original HTTP request to the merchant to detect whether payment is required.
+
+That initial merchant probe happens before any control-plane authorization or settlement attempt.
+
+For non-idempotent `POST` routes, only use probe-based flows when the merchant explicitly supports safe probing, or when you already have a merchant challenge and pass it to the SDK directly.
 
 ### Optional Attribution
 
@@ -257,7 +265,7 @@ If you do not have enough contract information to interpret a merchant response 
 
 `executePreparedRequest()` supports governed delegated execution through a caller-supplied executor interface.
 
-This lets the SDK keep authorization, policy, receipts, and final outcome normalization in the 402flow control plane while handing the final paid merchant call to a provider-specific executor owned by the host app or a separate integration package.
+Once a payable challenge is already known, this lets the SDK keep authorization, policy, receipts, and final outcome normalization in the 402flow control plane while handing the final paid merchant call to a provider-specific executor owned by the host app or a separate integration package.
 
 That means you can use Dexter, pay.sh, or a host-owned executor without turning the main SDK into a provider-specific bundle.
 
@@ -309,6 +317,14 @@ Responsibility split:
 5. the SDK returns the same outward `PaidResponse` or `FetchPaidError` contract as the direct path
 
 Official adapters live in `@402flow/sdk-third-party-executors` and the repo-local source for them lives in `third-party-executors/`.
+
+Prefer the provider-specific subpath you actually use:
+
+```ts
+import { createDexterExecutor } from '@402flow/sdk-third-party-executors/dexter';
+// or:
+import { createPayShExecutor } from '@402flow/sdk-third-party-executors/pay-sh';
+```
 
 ## Result And Receipt Semantics
 

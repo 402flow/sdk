@@ -13,7 +13,7 @@ It is not the core SDK contract. The core package surface remains:
 
 Use the harness when you want a preparedId-based tool surface for a model host, especially the repo-local OpenAI Responses examples under `examples/openai-tools-quickstart.mjs` and `examples/openai-agent-harness.mjs`.
 
-That means the host stores the full prepared request state and gives the model a small opaque `preparedId` instead of asking it to carry the entire prepared object across turns. Later tool calls use that `preparedId` to execute the prepared request or read back the stored result.
+That means the host stores the full prepared request state in process memory and gives the model a small opaque `preparedId` instead of asking it to carry the entire prepared object across turns. Later tool calls use that `preparedId` to execute the prepared request or read back the stored in-memory result.
 
 This matters for tool-calling hosts because passing a short stable id between turns is usually easier, safer, and cheaper than expecting the model to preserve a larger structured prepared request exactly. If your application can safely hold the prepared object itself, use the core SDK directly instead of `AgentHarness`.
 
@@ -29,13 +29,13 @@ The harness is intentionally narrow. It does not add a provider abstraction laye
 
 ## Payload Visibility Limitation
 
-The durable execution result stored by `AgentHarness` is not the same thing as automatically returning the merchant response body to the model.
+The stored in-memory execution result behind `AgentHarness` is not the same thing as automatically returning the merchant response body to the model.
 
 What the model actually sees depends on the host tool implementation:
 
 1. the harness can store deterministic execution state behind a `preparedId`
 2. the tool host decides what parts of that state are returned in tool output
-3. a durable stored result does not by itself guarantee that the model saw the full merchant payload
+3. a stored in-memory result does not by itself guarantee that the model saw the full merchant payload
 
 That distinction matters when evaluating transcripts or tool behavior.
 
@@ -87,15 +87,18 @@ So the current rule is:
 1. prefer `hints` as the main revise surface
 2. keep `challengeDetails` visible by default until revise coverage proves it is safe to hide
 
-## Duplicate Execute Semantics
+## Storage And Execute Semantics
 
 `AgentHarness` keeps prepare state in memory behind `preparedId`.
 
 Important behavior:
 
-1. a newer active preparation for the same method plus origin plus pathname supersedes the older one
-2. duplicate execute calls for a consumed `preparedId` return a stable harness-local rejection instead of creating another payment attempt implicitly
-3. hosts should prepare again if they want an explicit retry path
+1. state and execution results live only in memory inside the current process; they are not durable across process restarts or shared across hosts
+2. expiry is checked lazily when a record is accessed; there is no background cleanup loop
+3. a newer active preparation for the same method plus origin plus pathname supersedes the older one
+4. concurrent execute calls for the same active `preparedId` share one in-flight execution in that same process
+5. after a `preparedId` is consumed, later execute calls return a stable harness-local rejection instead of creating another payment attempt implicitly
+6. hosts should prepare again if they want an explicit retry path
 
 ## Environment
 

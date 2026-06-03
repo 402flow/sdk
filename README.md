@@ -20,11 +20,15 @@ Use `preparePaidRequest(...)` when the agent needs merchant-published hints and 
 npm install @402flow/sdk
 ```
 
+This is the normal install path. Use `@402flow/sdk` by itself when you want the native 402flow payment flow.
+
 Optional official adapters for third-party payers:
 
 ```bash
 npm install @402flow/sdk @402flow/sdk-third-party-executors
 ```
+
+Install `@402flow/sdk-third-party-executors` only when you want delegated execution through Dexter or pay.sh instead of the native 402flow path.
 
 The published package supports Node 20+.
 
@@ -32,10 +36,10 @@ The published package supports Node 20+.
 
 | API | Use it when | What it returns |
 | --- | --- | --- |
-| `fetchPaid(...)` | You already know the request shape | Probe, authorize, pay, and return the merchant response in one path |
+| `fetchPaid(...)` | You already know the request shape | Probe the merchant when no challenge is supplied, then authorize, pay, and return the merchant response |
 | `preparePaidRequest(...)` | You want to inspect before paying | Payment terms, parameter hints, validation issues, and an authoritative `nextAction` |
 | `executePreparedRequest(...)` | You already prepared the request | Executes the exact prepared request without re-probing first |
-| `AgentHarness` | Your model host wants a `preparedId` tool contract | The same flow behind a canonical three-tool surface |
+| `AgentHarness` | Your model host wants a `preparedId` tool contract | The same flow behind a process-local in-memory three-tool surface |
 
 ## Quick Start: Host-Controlled Request
 
@@ -83,6 +87,8 @@ console.log(result.receiptId);
 
 This is why the request body is filled in directly in code here. `fetchPaid(...)` is the simplest integration path when your application already knows the parameters.
 
+Important probe semantics: when you do not supply a merchant challenge, both `fetchPaid(...)` and `preparePaidRequest(...)` send the original request to the merchant first to discover whether payment is required. That initial merchant probe happens before any control-plane authorization or payment attempt. For non-idempotent `POST` routes, use this only against endpoints that are explicitly safe to probe or after you already have the merchant challenge from another step.
+
 Use `fetchPaid(...)` when the request is already shaped and you want the shortest path.
 Use `preparePaidRequest(...)` when the caller needs to inspect what the merchant published, construct the right request, and execute only when `nextAction === 'execute'`.
 
@@ -103,7 +109,7 @@ That is the path to use when the model is supposed to fill request parameters pr
 
 `AgentHarness` is the optional model-host wrapper for the same inspect-then-execute loop.
 
-It stores prepared state behind a `preparedId`, exposes a canonical three-tool contract, and keeps the rule that matters most stable across hosts:
+It stores process-local in-memory prepared state behind a `preparedId`, exposes a canonical three-tool contract, and keeps the rule that matters most stable across hosts:
 
 `nextAction` is authoritative.
 
@@ -123,12 +129,19 @@ console.log(defaultHarnessToolSpecs.map((spec) => spec.name));
 
 Use this path when you want the model to construct a correct request instead of guessing its way into a paid call.
 
+`AgentHarness` is a convenience wrapper for single-process hosts. It is not a durable cross-process orchestration store.
+
 ## Governed Third-Party Execution
 
-402flow can execute paid x402 requests natively, or you can delegate final payment execution to Dexter, pay.sh, or another executor. In both cases, 402flow authorizes the attempt before execution and finalizes the normalized result afterward, keeping policy, approvals, receipts, and audit centralized.
+402flow can execute paid x402 requests natively, or you can delegate final payment execution to Dexter, pay.sh, or another executor. Once a payable challenge is already known, 402flow authorizes the paid attempt before execution and finalizes the normalized result afterward, keeping policy, approvals, receipts, and audit centralized.
 
+Official adapters live in `@402flow/sdk-third-party-executors`, and the repo-local source for those adapters lives under `third-party-executors/`. Import the provider-specific subpath you actually use:
 
-Official adapters live in `@402flow/sdk-third-party-executors`, and the repo-local source for those adapters lives under `third-party-executors/`.
+```ts
+import { createDexterExecutor } from '@402flow/sdk-third-party-executors/dexter';
+// or:
+import { createPayShExecutor } from '@402flow/sdk-third-party-executors/pay-sh';
+```
 
 ## Further Reading
 

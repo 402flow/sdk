@@ -197,6 +197,7 @@ type StoredPreparedRecord = {
   prepared: SdkPreparedPaidRequest;
   executionBinding: AgentHarnessExecutionBinding;
   executionResult?: AgentHarnessExecutionResult;
+  executionPromise?: Promise<AgentHarnessExecutionResult>;
 };
 
 // Preparations supersede by stable execution target, not by full query/body, so a
@@ -567,10 +568,10 @@ export class AgentHarness {
       // Execution is only allowed for active, ready preparations. All rejected
       // local states are converted into stored deterministic results.
       const record = this.getRecordForExecution(input.preparedId);
-      const outcome = await this.runExecution(record, input.executionContext);
-
-      record.state = 'consumed';
-      record.executionResult = createFrozenClone(outcome);
+      const executionPromise =
+        record.executionPromise ??
+        this.createExecutionPromise(record, input.executionContext);
+      const outcome = await executionPromise;
 
       return cloneValue(outcome);
     } catch (error) {
@@ -583,14 +584,14 @@ export class AgentHarness {
   }
 
   /**
-   * Return the durable stored outcome for a preparedId without re-running any
+   * Return the stored in-memory outcome for a preparedId without re-running any
    * merchant or control-plane call.
    */
   getExecutionResult(
     preparedId: string,
   ): AgentHarnessExecutionLookup {
-    // This lookup lets an agent fetch the durable outcome later without re-running
-    // execution or depending on host-specific tool memory.
+    // This lookup lets an agent fetch the stored in-memory outcome later without
+    // re-running execution or depending on host-specific tool memory.
     const record = this.getKnownRecord(preparedId);
     this.refreshRecordState(record);
 
@@ -647,6 +648,26 @@ export class AgentHarness {
 
       return summarizeExecutionOutcome(record.preparedId, error.details);
     }
+  }
+
+  private createExecutionPromise(
+    record: StoredPreparedRecord,
+    executionContext: ExecutePreparedRequest | undefined,
+  ): Promise<AgentHarnessExecutionResult> {
+    const executionPromise = this.runExecution(record, executionContext)
+      .then((outcome) => {
+        record.state = 'consumed';
+        record.executionResult = createFrozenClone(outcome);
+
+        return record.executionResult;
+      })
+      .finally(() => {
+        delete record.executionPromise;
+      });
+
+    record.executionPromise = executionPromise;
+
+    return executionPromise;
   }
 
   // Rejection results are stored so later lookups remain deterministic even when

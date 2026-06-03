@@ -101,6 +101,60 @@ describe('AgentPayClient entrypoint behaviors', () => {
     expect(result.receiptId).toBe('00000000-0000-0000-0000-000000000030');
   });
 
+  it('keeps the bound client identity when runtime callers pass identity fields', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            outcome: 'allow',
+            paidRequestId: '00000000-0000-0000-0000-000000000132',
+            paymentAttemptId: '00000000-0000-0000-0000-000000000232',
+            reasonCode: 'policy_allow',
+            reason: 'Allowed.',
+            merchantResponse: {
+              status: 200,
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: '{"ok":true}',
+            },
+            receipt: {
+              ...baseReceipt,
+              paidRequestId: '00000000-0000-0000-0000-000000000132',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000232',
+            },
+          }),
+          {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    );
+    const client = createAgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+    const request = {
+      challenge: baseChallenge,
+      description: 'Bound identity should win.',
+      organization: 'rogue-organization',
+      agent: 'rogue-agent',
+    } as unknown as Parameters<AgentPayClient['fetchPaid']>[2];
+
+    await client.fetchPaid(
+      'https://merchant.example.com/data',
+      { method: 'GET' },
+      request,
+    );
+
+    const controlPlaneRequest = fetchMock.mock.calls[0]?.[1];
+    const payload = JSON.parse(String(controlPlaneRequest?.body));
+    expect(payload.context.organization).toBe(baseContext.organization);
+    expect(payload.context.agent).toBe(baseContext.agent);
+  });
+
   it('accepts observed-only receipts that omit merchantId', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
       async () =>
@@ -284,6 +338,36 @@ describe('AgentPayClient entrypoint behaviors', () => {
       throw error;
     }
     expect(error.message).toBe(unsupportedSdkVersionMessage);
+  });
+
+  it('surfaces an actionable hint when a local control plane base URL uses https by mistake', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValueOnce(
+      new TypeError('fetch failed'),
+    );
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'https://127.0.0.1:3001',
+      auth: { type: 'bootstrapKey', bootstrapKey: 'bootstrap-key' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const error = await client
+      .lookupReceipt('00000000-0000-0000-0000-000000000020')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+
+    expect(error.message).toContain(
+      'Control plane request to https://127.0.0.1:3001/api/sdk/runtime-tokens failed.',
+    );
+    expect(error.message).toContain(
+      'use http://127.0.0.1:3001 as the controlPlaneBaseUrl instead.',
+    );
+    expect(error.message).toContain('Original error: fetch failed');
   });
 
   it('detects a v2 payment-required header and forwards the parsed challenge to the control plane', async () => {

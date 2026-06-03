@@ -1,12 +1,15 @@
 {
   "name": "@402flow/sdk-third-party-executors",
-  "version": "0.1.0-alpha.28",
+  "version": "0.1.0-alpha.29",
   "type": "module",
   "description": "Official supported delegated-execution adapters for @402flow/sdk.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "peerDependencies": {
+    "@402flow/sdk": "0.1.0-alpha.29"
   },
   "license": "Apache-2.0",
   "author": "402flow",
@@ -38,14 +41,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
-  },
-  "peerDependencies": {
-    "@402flow/sdk": "0.1.0-alpha.26"
-  },
-  "peerDependenciesMeta": {
-    "@402flow/sdk": {
-      "optional": true
+    },
+    "./dexter": {
+      "types": "./dist/dexter-executor.d.ts",
+      "import": "./dist/dexter-executor.js",
+      "default": "./dist/dexter-executor.js"
+    },
+    "./pay-sh": {
+      "types": "./dist/pay-sh-executor.d.ts",
+      "import": "./dist/pay-sh-executor.js",
+      "default": "./dist/pay-sh-executor.js"
     }
   },
   "overrides": {
@@ -67,18 +72,19 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dexterai/x402": "^3.9.0",
-    "@solana/kit": "^6.5.0",
-    "@x402/core": "^2.13.0",
-    "@x402/svm": "^2.13.0"
+    "@dexterai/x402": "^3.9.1",
+    "@solana/kit": "^5.5.1",
+    "@x402/core": "^2.14.0",
+    "@x402/svm": "^2.14.0"
   },
   "devDependencies": {
+    "@402flow/sdk": "0.1.0-alpha.29",
     "@eslint/js": "^9.22.0",
     "@types/node": "^22.13.10",
     "eslint": "^9.22.0",
     "globals": "^15.15.0",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.1",
-    "vitest": "^3.0.8"
+    "vitest": "^4.1.8"
   }
 }

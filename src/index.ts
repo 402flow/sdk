@@ -294,6 +294,36 @@ function trimTrailingSlash(value: string) {
   return value.endsWith('/') ? value.slice(0, -1) : value;
 }
 
+function isLoopbackHost(hostname: string) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function buildControlPlaneTransportErrorMessage(
+  controlPlaneUrl: string,
+  error: unknown,
+) {
+  let localHttpsHint = '';
+
+  try {
+    const parsedUrl = new URL(controlPlaneUrl);
+
+    if (parsedUrl.protocol === 'https:' && isLoopbackHost(parsedUrl.hostname)) {
+      const httpUrl = new URL(controlPlaneUrl);
+      httpUrl.protocol = 'http:';
+      localHttpsHint = ` If this is a local control plane running without TLS, use ${httpUrl.origin} as the controlPlaneBaseUrl instead.`;
+    }
+  } catch {
+    // Ignore URL parsing failures and fall back to the generic transport message.
+  }
+
+  const originalMessage =
+    error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : 'Unknown transport failure.';
+
+  return `Control plane request to ${controlPlaneUrl} failed.${localHttpsHint} Original error: ${originalMessage}`;
+}
+
 function createJsonResponse(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -1635,8 +1665,8 @@ export class AgentPayClient {
 
     return sdkPaymentDecisionRequestSchema.parse({
       context: {
-        ...this.identity,
         ...requestContext,
+        ...this.identity,
       },
       request: createPreparedHttpRequest(input, init),
       challenge: {
@@ -2030,15 +2060,23 @@ export class AgentPayClient {
   ) {
     // Every control-plane call carries the SDK version header so incompatible
     // client/server contract mismatches can fail fast.
-    return this.fetchImpl(`${this.controlPlaneBaseUrl}${path}`, {
-      ...init,
-      headers: {
-        ...(this.headers ?? {}),
-        ...(normalizeHeaders(init.headers) ?? {}),
-        Authorization: authorizationHeader,
-        [sdkClientVersionHeaderName]: sdkClientVersion,
-      },
-    });
+    const controlPlaneUrl = `${this.controlPlaneBaseUrl}${path}`;
+
+    try {
+      return await this.fetchImpl(controlPlaneUrl, {
+        ...init,
+        headers: {
+          ...(this.headers ?? {}),
+          ...(normalizeHeaders(init.headers) ?? {}),
+          Authorization: authorizationHeader,
+          [sdkClientVersionHeaderName]: sdkClientVersion,
+        },
+      });
+    } catch (error) {
+      throw new Error(buildControlPlaneTransportErrorMessage(controlPlaneUrl, error), {
+        cause: error,
+      });
+    }
   }
 }
 

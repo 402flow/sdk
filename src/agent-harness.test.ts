@@ -238,6 +238,58 @@ describe('AgentHarness local behaviors', () => {
     });
   });
 
+  it('deduplicates concurrent execution for the same prepared id', async () => {
+    let resolveExecution!: (value: ReturnType<typeof createSuccessPaidResponse>) => void;
+    const executePreparedRequest = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof createSuccessPaidResponse>>((resolve) => {
+          resolveExecution = resolve;
+        }),
+    );
+    const harness = new AgentHarness({
+      client: createStaticClient(createReadyPrepared(), executePreparedRequest),
+      createPreparedId: () => 'prepared-race',
+    });
+
+    await harness.preparePaidRequest({
+      url: 'https://merchant.example.com/v1/generate?style=neo',
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: '{"prompt":"hello"}',
+    });
+
+    const firstExecution = harness.executePreparedRequest({
+      preparedId: 'prepared-race',
+      executionContext: {
+        description: 'Concurrent execution 1.',
+      },
+    });
+    const secondExecution = harness.executePreparedRequest({
+      preparedId: 'prepared-race',
+      executionContext: {
+        description: 'Concurrent execution 2.',
+      },
+    });
+
+    expect(executePreparedRequest).toHaveBeenCalledTimes(1);
+
+    resolveExecution(createSuccessPaidResponse());
+
+    const [firstResult, secondResult] = await Promise.all([
+      firstExecution,
+      secondExecution,
+    ]);
+
+    expect(firstResult).toEqual(secondResult);
+    expect(harness.getExecutionResult('prepared-race')).toEqual({
+      preparedId: 'prepared-race',
+      state: 'consumed',
+      executionResult: firstResult,
+    });
+  });
+
   it('supersedes older active prepared requests for the same endpoint path', async () => {
     const executePreparedRequest = vi.fn(async () => createSuccessPaidResponse());
     const harness = new AgentHarness({
