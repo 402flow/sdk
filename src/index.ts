@@ -1561,14 +1561,31 @@ export class AgentPayClient {
         delegatedExecution,
         authorization,
       });
-      const finalization = await this.requestPaymentFinalization(
-        sdkPaymentFinalizationRequestSchema.parse({
-          paidRequestId: authorization.paidRequestId,
-          paymentAttemptId: authorization.paymentAttemptId,
-          result: delegatedResult,
-        }),
-        prepared.challenge.protocol,
-      );
+      const finalizationRequest = sdkPaymentFinalizationRequestSchema.parse({
+        paidRequestId: authorization.paidRequestId,
+        paymentAttemptId: authorization.paymentAttemptId,
+        result: delegatedResult,
+      });
+
+      let finalization: SdkPaymentDecisionResponse;
+
+      try {
+        finalization = await this.requestPaymentFinalization(
+          finalizationRequest,
+          prepared.challenge.protocol,
+        );
+      } catch (error) {
+        if (error instanceof FetchPaidError) {
+          throw error;
+        }
+
+        throw this.buildDelegatedFinalizationTransportLossError({
+          protocol: prepared.challenge.protocol,
+          authorization,
+          delegatedResult,
+          error,
+        });
+      }
 
       return this.mapDecisionToPaidResponse(
         finalization,
@@ -1882,6 +1899,52 @@ export class AgentPayClient {
               },
       },
     });
+  }
+
+  private buildDelegatedFinalizationTransportLossError(input: {
+    protocol: PaidProtocol;
+    authorization: PreparedRequestExecutorInput['authorization'];
+    delegatedResult: SdkDelegatedExecutionResult;
+    error: unknown;
+  }) {
+    const originalMessage =
+      input.error instanceof Error && input.error.message.trim().length > 0
+        ? ` Original error: ${input.error.message}`
+        : '';
+    const reason =
+      'Delegated execution completed, but payment finalization could not be confirmed because the control-plane request failed after dispatch. Do not automatically rerun this prepared request.'
+      + originalMessage;
+    const decision: InconclusiveDecision = {
+      outcome: 'inconclusive',
+      paidRequestId: input.authorization.paidRequestId,
+      paymentAttemptId: input.authorization.paymentAttemptId,
+      reasonCode: 'payment_finalization_transport_lost',
+      reason,
+      evidence: {
+        stage: 'payment_finalization',
+        delegatedResult: input.delegatedResult,
+        transportError:
+          input.error instanceof Error
+            ? {
+                name: input.error.name,
+                message: input.error.message,
+              }
+            : {
+                message: String(input.error),
+              },
+      },
+    };
+    const response: ExecutionInconclusivePaidResponse = {
+      kind: 'execution_inconclusive',
+      protocol: input.protocol,
+      response: createJsonResponse(202, decision),
+      paidRequestId: input.authorization.paidRequestId,
+      paymentAttemptId: input.authorization.paymentAttemptId,
+      reason,
+      decision,
+    };
+
+    return new FetchPaidError(response);
   }
 
   private mapDecisionToPaidResponse(

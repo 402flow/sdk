@@ -114,6 +114,7 @@ export const paidRequestReasonCodeSchema = z.enum([
   'merchant_execution_failed',
   'settlement_proof_conflict',
   'merchant_transport_lost',
+  'payment_finalization_transport_lost',
 ]);
 export type PaidRequestReasonCode = z.infer<typeof paidRequestReasonCodeSchema>;
 
@@ -710,7 +711,10 @@ export const sdkPaymentDecisionInconclusiveResponseSchema = z.object({
   outcome: z.literal('inconclusive'),
   paidRequestId: z.string().uuid(),
   paymentAttemptId: z.string().uuid(),
-  reasonCode: z.literal('merchant_transport_lost'),
+  reasonCode: z.enum([
+    'merchant_transport_lost',
+    'payment_finalization_transport_lost',
+  ]),
   reason: z.string().min(1),
   evidence: z.record(z.unknown()).optional(),
 });

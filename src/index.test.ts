@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   AgentPayClient,
+  FetchPaidError,
   createAgentPayClient,
   sdkClientVersion,
   sdkClientVersionHeaderName,
@@ -368,6 +369,119 @@ describe('AgentPayClient entrypoint behaviors', () => {
       'use http://127.0.0.1:3001 as the controlPlaneBaseUrl instead.',
     );
     expect(error.message).toContain('Original error: fetch failed');
+  });
+
+  it('treats delegated finalization transport loss as an inconclusive paid outcome', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(
+        async () =>
+          new Response(
+            JSON.stringify({
+              outcome: 'authorized',
+              paidRequestId: '00000000-0000-0000-0000-000000000141',
+              paymentAttemptId: '00000000-0000-0000-0000-000000000241',
+              reasonCode: 'policy_allow',
+              reason: 'Authorized.',
+            }),
+            {
+              status: 201,
+              headers: { 'content-type': 'application/json' },
+            },
+          ),
+      )
+      .mockRejectedValueOnce(new TypeError('fetch failed'));
+    const executor = {
+      provider: 'dexter',
+      execute: vi.fn(async () => ({
+        protocol: 'x402' as const,
+        executionStatus: 'succeeded' as const,
+        settlementEvidenceClass: 'settled' as const,
+        merchantOutcome: 'success_response' as const,
+        merchantResponse: {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: '{"ok":true}',
+        },
+        settlementReference: 'settlement-123',
+      })),
+    };
+
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+      ...baseContext,
+      fetch: fetchMock,
+    });
+
+    const error = await client
+      .executePreparedRequest(
+        {
+          kind: 'ready',
+          protocol: 'x402',
+          request: {
+            url: 'https://merchant.example.com/data',
+            method: 'GET',
+            headers: {},
+          },
+          challenge: baseChallenge,
+          hints: {
+            requestBodyFields: [],
+            requestQueryParams: [],
+            requestPathParams: [],
+            notes: [],
+          },
+          validationIssues: [],
+          nextAction: 'execute',
+        },
+        {
+          executionProvider: 'dexter',
+          executor,
+          description: 'Delegated execution transport-loss regression.',
+        },
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      'http://localhost:3001/api/sdk/payment-finalizations',
+    );
+
+    expect(error).toBeInstanceOf(FetchPaidError);
+    if (!(error instanceof FetchPaidError)) {
+      throw error;
+    }
+
+    expect(error.kind).toBe('execution_inconclusive');
+    expect(error.response.status).toBe(202);
+    expect(error.paidRequestId).toBe('00000000-0000-0000-0000-000000000141');
+    expect(error.paymentAttemptId).toBe('00000000-0000-0000-0000-000000000241');
+    expect(error.reason).toContain(
+      'payment finalization could not be confirmed because the control-plane request failed after dispatch.',
+    );
+    expect(error.reason).toContain(
+      'Original error: Control plane request to http://localhost:3001/api/sdk/payment-finalizations failed.',
+    );
+    expect(error.decision).toMatchObject({
+      outcome: 'inconclusive',
+      paidRequestId: '00000000-0000-0000-0000-000000000141',
+      paymentAttemptId: '00000000-0000-0000-0000-000000000241',
+      reasonCode: 'payment_finalization_transport_lost',
+      evidence: {
+        stage: 'payment_finalization',
+        delegatedResult: {
+          executionStatus: 'succeeded',
+          settlementEvidenceClass: 'settled',
+          merchantOutcome: 'success_response',
+        },
+        transportError: {
+          name: 'Error',
+        },
+      },
+    });
   });
 
   it('detects a v2 payment-required header and forwards the parsed challenge to the control plane', async () => {
