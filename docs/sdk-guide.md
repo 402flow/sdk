@@ -120,7 +120,9 @@ const result = await client.fetchPaid(
 );
 
 console.log(await result.response.json());
-console.log(result.receiptId);
+if (result.kind === 'success') {
+  console.log(result.receiptId);
+}
 ```
 
 If the merchant does not require payment for that exact request, the SDK returns a passthrough response.
@@ -136,6 +138,11 @@ When you do not supply `request.challenge` to `fetchPaid()` or `options.challeng
 That initial merchant probe happens before any control-plane authorization or settlement attempt.
 
 For non-idempotent `POST` routes, only use probe-based flows when the merchant explicitly supports safe probing, or when you already have a merchant challenge and pass it to the SDK directly.
+
+The original `RequestInit.signal` applies to this merchant probe. A prepared
+request does not store the signal. To apply a timeout to every merchant and
+control-plane network call, provide a custom `fetch` when creating the client.
+See [`examples/typescript/timeout-client.ts`](../examples/typescript/timeout-client.ts).
 
 ### Optional Attribution
 
@@ -351,6 +358,16 @@ Receipt notes:
 3. callers should treat provisional receipts as payment-attempt evidence, not as proof of final settlement
 4. `idempotencyKey` is optional for normal SDK use, but you should set it for retrying callers or automation loops where duplicate suppression matters
 
+For the full taxonomy and outcome-specific retry rules, read
+[SDK compatibility](compatibility.md). In particular:
+
+1. retry uncertain operations with the same idempotency key
+2. do not retry `paid_fulfillment_failed` as a new payment
+3. reconcile `execution_pending` and `execution_inconclusive` before taking a new action
+4. treat probe aborts and timeouts as platform errors, not `FetchPaidError`
+
+Strict runnable examples live under [`examples/typescript/`](../examples/typescript/).
+
 ## Receipt Lookup
 
 ```ts
@@ -383,6 +400,7 @@ console.log(defaultHarnessToolSpecs);
 ## Related Docs
 
 - [Root README](../README.md)
+- [Compatibility, errors, and safe retries](compatibility.md)
 - [Evaluation harness](evaluation-harness.md)
 - [Harness scenarios](harness-scenarios.md)
 - [Third-party executors](../third-party-executors/README.md)

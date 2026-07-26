@@ -9,8 +9,8 @@ import {
   createKeyPairSignerFromPrivateKeyBytes,
 } from '@solana/kit';
 
-import { FetchPaidError, createJsonRequestBody } from '../../dist/index.js';
-import { createPayShExecutor } from '../dist/pay-sh-executor.js';
+import { FetchPaidError, createJsonRequestBody } from '@402flow/sdk';
+import { createPayShExecutor } from '@402flow/sdk-third-party-executors/pay-sh';
 import {
   createClientFromEnv,
   getRequiredEnv,

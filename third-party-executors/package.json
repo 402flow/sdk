@@ -1,15 +1,15 @@
 {
   "name": "@402flow/sdk-third-party-executors",
-  "version": "0.1.0-alpha.30",
+  "version": "0.1.0",
   "type": "module",
   "description": "Official supported delegated-execution adapters for @402flow/sdk.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.18.0"
   },
   "peerDependencies": {
-    "@402flow/sdk": "0.1.0-alpha.30"
+    "@402flow/sdk": "0.1.0"
   },
   "license": "Apache-2.0",
   "author": "402flow",
@@ -72,16 +72,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dexterai/x402": "^3.9.1",
+    "@dexterai/x402": "5.4.2",
     "@solana/kit": "^5.5.1",
     "@x402/core": "^2.14.0",
     "@x402/svm": "^2.14.0"
   },
   "devDependencies": {
-    "@402flow/sdk": "0.1.0-alpha.29",
-    "@eslint/js": "^9.22.0",
+    "@402flow/sdk": "file:..",
+    "@eslint/js": "10.0.1",
     "@types/node": "^22.13.10",
-    "eslint": "^9.22.0",
+    "eslint": "10.8.0",
     "globals": "^15.15.0",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.1",

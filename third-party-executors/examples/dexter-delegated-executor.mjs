@@ -4,8 +4,8 @@ import {
   createEvmKeypairWallet,
 } from '@dexterai/x402/client';
 
-import { FetchPaidError, createJsonRequestBody } from '../../dist/index.js';
-import { createDexterExecutor } from '../dist/dexter-executor.js';
+import { FetchPaidError, createJsonRequestBody } from '@402flow/sdk';
+import { createDexterExecutor } from '@402flow/sdk-third-party-executors/dexter';
 import { createClientFromEnv, getRequiredEnv } from '../../examples/openai-tools-runtime.mjs';
 
 const defaultBody = {

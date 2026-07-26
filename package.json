@@ -1,6 +1,6 @@
 {
   "name": "@402flow/sdk",
-  "version": "0.1.0-alpha.30",
+  "version": "0.1.0",
   "description": "Paid HTTP SDK for AI agents with an inspectable prepare/execute flow.",
   "private": false,
   "type": "module",
@@ -57,6 +57,7 @@
     "scenario:first-party": "npm run build && node scripts/run-scenarios.mjs --plan=first-party",
     "scenario:mock": "npm run build && node scripts/run-scenarios.mjs --plan=mock",
     "scenario:third-party": "npm run build && node scripts/run-scenarios.mjs --plan=third-party",
+    "smoke:hosted-demo": "node scripts/check-hosted-demo.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
@@ -65,10 +66,10 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@eslint/js": "^9.22.0",
+    "@eslint/js": "10.0.1",
     "@types/node": "^22.13.10",
     "@vitest/coverage-v8": "^4.1.8",
-    "eslint": "^9.22.0",
+    "eslint": "10.8.0",
     "globals": "^15.15.0",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.1",

@@ -41,6 +41,26 @@ The published package supports Node 20+.
 | `executePreparedRequest(...)` | You already prepared the request | Executes the exact prepared request without re-probing first |
 | `AgentHarness` | Your model host wants a `preparedId` tool contract | The same flow behind a process-local in-memory three-tool surface |
 
+## Hosted Integration Targets
+
+The hosted demo merchant exposes side-effect-free unpaid probes on two test
+networks:
+
+| Network | URL |
+| --- | --- |
+| Base Sepolia | `https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-sepolia` |
+| Solana devnet | `https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-devnet` |
+
+Both routes accept the JSON body used below and return HTTP 402 before payment.
+Each paid call costs 0.001 test USDC. Do not substitute a mainnet route unless
+you intend to spend real funds.
+
+Run the unpaid hosted contract check with:
+
+```bash
+npm run smoke:hosted-demo
+```
+
 ## Quick Start: Host-Controlled Request
 
 This first example shows the deterministic application path. Your code already knows which merchant route and request parameters it wants to send, and the SDK handles probing, policy, payment, and receipts around that request.
@@ -82,7 +102,9 @@ const result = await client.fetchPaid(
 );
 
 console.log(await result.response.json());
-console.log(result.receiptId);
+if (result.kind === 'success') {
+  console.log(result.receiptId);
+}
 ```
 
 This is why the request body is filled in directly in code here. `fetchPaid(...)` is the simplest integration path when your application already knows the parameters.
@@ -91,6 +113,10 @@ Important probe semantics: when you do not supply a merchant challenge, both `fe
 
 Use `fetchPaid(...)` when the request is already shaped and you want the shortest path.
 Use `preparePaidRequest(...)` when the caller needs to inspect what the merchant published, construct the right request, and execute only when `nextAction === 'execute'`.
+
+The strict, runnable version of this example is
+[`examples/typescript/fetch-paid.ts`](examples/typescript/fetch-paid.ts). It
+includes passthrough narrowing, typed failures, and an explicit idempotency key.
 
 ## Quick Start: Agent-Driven Request Construction
 
@@ -104,6 +130,10 @@ The typical loop is:
 4. the host executes the prepared request and reads the stored result before summarizing the outcome
 
 That is the path to use when the model is supposed to fill request parameters properly instead of relying on host code that already knows the answer.
+
+See
+[`examples/typescript/prepare-execute.ts`](examples/typescript/prepare-execute.ts)
+for a strict executable example.
 
 ## AgentHarness
 
@@ -143,9 +173,35 @@ import { createDexterExecutor } from '@402flow/sdk-third-party-executors/dexter'
 import { createPayShExecutor } from '@402flow/sdk-third-party-executors/pay-sh';
 ```
 
+The constructors require provider credentials:
+
+- Dexter: `{ wallets, payAndFetchOptions? }`
+- pay.sh: `{ signer, rpcUrl?, networks?, policies? }`
+
+Read the [adapter guide](third-party-executors/README.md) before installing the
+optional package. It documents the provider dependency footprint and links to
+complete executable examples.
+
+## Errors, Retries, And Timeouts
+
+Paid non-success outcomes throw `FetchPaidError`. Merchant probe aborts,
+runtime-token failures, and control-plane transport failures are ordinary
+platform errors. Always narrow `PaidResponse` before reading receipt fields.
+
+Use an idempotency key for every operation that might be retried. Reuse a key
+only for the exact same business operation and request. A timeout does not prove
+that payment did not happen.
+
+See the [compatibility guide](docs/compatibility.md) for the complete error
+taxonomy and safe-retry table. To bound each network call, use the custom-fetch
+pattern in
+[`examples/typescript/timeout-client.ts`](examples/typescript/timeout-client.ts).
+
 ## Further Reading
 
 - [Detailed SDK guide](docs/sdk-guide.md)
+- [Clean-room integration review](docs/clean-room-integration-review.md)
+- [Compatibility, errors, and safe retries](docs/compatibility.md)
 - [Evaluation harness](docs/evaluation-harness.md)
 - [Harness scenarios](docs/harness-scenarios.md)
 - [Dexter and pay.sh executors](third-party-executors/README.md)

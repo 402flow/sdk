@@ -9,10 +9,15 @@ From the SDK root:
 ```bash
 npm run install:all
 npm run check:all
+npm run smoke:hosted-demo
 npm run pack:check
 ```
 
 `npm run check:all` validates the main SDK package first and then the separate `third-party-executors` package.
+
+`npm run smoke:hosted-demo` makes unpaid probes against the public Base Sepolia
+and Solana devnet routes. Do not publish customer-facing demo URLs while this
+check fails.
 
 ## Publish Order
 
