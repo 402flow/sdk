@@ -1,5 +1,8 @@
 # @402flow/sdk
 
+[![npm: @402flow/sdk](https://img.shields.io/npm/v/@402flow/sdk?label=%40402flow%2Fsdk)](https://www.npmjs.com/package/@402flow/sdk)
+[![npm: third-party executors](https://img.shields.io/npm/v/@402flow/sdk-third-party-executors?label=third-party-executors)](https://www.npmjs.com/package/@402flow/sdk-third-party-executors)
+
 Paid API SDK for AI agents, tool hosts, and governed automation.
 
 It gives AI agents, tool hosts, and automation services easy access to paid APIs while organizations keep policy, approvals, receipts, and spend controls outside the agent runtime.
