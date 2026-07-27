@@ -76,6 +76,18 @@ Complete executable examples:
 Both examples require 402flow credentials and provider signing credentials.
 Run either command with `--help` before submitting a paid request.
 
+### Dexter Network Boundary
+
+`@dexterai/x402` 5.4.2 resolves Base and Solana mainnet, but it does not resolve
+Base Sepolia or Solana devnet. The hosted demo routes validate the native
+402flow SDK flow; they cannot validate a Dexter settlement. Against either
+hosted test route, Dexter returns `no_payment_options` before wallet signing and
+this adapter normalizes it to a typed `preflight_failed` result.
+
+A full Dexter settlement requires a supported network and a funded wallet. Do
+not move an integration test to mainnet merely to bypass the testnet limitation;
+use an intentional, spend-capped verification plan.
+
 ## Dependency Footprint
 
 The core `@402flow/sdk` package depends only on Zod. The optional combined

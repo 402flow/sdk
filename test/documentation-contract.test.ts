@@ -55,6 +55,25 @@ describe('customer documentation contract', () => {
     );
   });
 
+  it('publishes and smoke-checks every hosted integration target', () => {
+    const readme = read('README.md');
+    const smokeScript = read('scripts/check-hosted-demo.mjs');
+
+    for (const route of [
+      '/demo-merchant/research-brief/base-sepolia',
+      '/demo-merchant/research-brief/base-mainnet',
+      '/demo-merchant/research-brief/solana-devnet',
+      '/demo-merchant/research-brief/solana-mainnet',
+    ]) {
+      expect(readme).toContain(route);
+      expect(smokeScript).toContain(route);
+    }
+
+    expect(readme).toContain('0.006 USDC');
+    expect(readme).toContain('npm run scenario:core');
+    expect(readme).toContain('funded Base and Solana mainnet rails');
+  });
+
   it('publishes the compatibility and safe-retry contract', () => {
     const compatibility = read('docs/compatibility.md');
 

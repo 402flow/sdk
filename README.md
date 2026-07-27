@@ -43,23 +43,31 @@ The published package supports Node 20+.
 
 ## Hosted Integration Targets
 
-The hosted demo merchant exposes side-effect-free unpaid probes on two test
-networks:
+The hosted demo merchant exposes the same integration contract on four networks:
 
-| Network | URL |
-| --- | --- |
-| Base Sepolia | `https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-sepolia` |
-| Solana devnet | `https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-devnet` |
+| Network | Environment | URL | Price per paid call |
+| --- | --- | --- | --- |
+| Base Sepolia | Testnet | `https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-sepolia` | 0.001 test USDC |
+| Base | Mainnet | `https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-mainnet` | 0.001 real USDC |
+| Solana devnet | Testnet | `https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-devnet` | 0.001 test USDC |
+| Solana | Mainnet | `https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-mainnet` | 0.001 real USDC |
 
-Both routes accept the JSON body used below and return HTTP 402 before payment.
-Each paid call costs 0.001 test USDC. Do not substitute a mainnet route unless
-you intend to spend real funds.
+All four routes accept the JSON body used below and return HTTP 402 before
+payment. The hosted smoke command probes their challenge contracts without
+paying:
 
 Run the unpaid hosted contract check with:
 
 ```bash
 npm run smoke:hosted-demo
 ```
+
+The default release integration campaign is `npm run scenario:core`. It includes
+three paid Base mainnet scenarios and three paid Solana mainnet scenarios. At the
+current merchant price, its mainnet merchant spend is 0.006 USDC total, plus any
+execution-rail network fees. It requires funded Base and Solana mainnet rails.
+A release campaign is incomplete if either mainnet cannot authorize, pay, and
+return fulfilled HTTP 200 content with a receipt.
 
 ## Quick Start: Host-Controlled Request
 

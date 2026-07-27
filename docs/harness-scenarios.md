@@ -14,6 +14,25 @@ npm run scenario:core
 
 That command clears `tmp/`, rebuilds the SDK, reruns first-party plus mock scenarios in one run, and writes only the newest logs, transcripts, and semantic summary back under `tmp/`.
 
+`scenario:core` is the default release integration campaign, not an offline unit
+test. Its first-party plan includes three paid Base mainnet scenarios and three
+paid Solana mainnet scenarios. At the current merchant price, that is 0.006 USDC
+of mainnet merchant spend, plus any execution-rail network fees. Both mainnet
+rails must be funded and enabled.
+
+The mainnet portion passes only when every Base and Solana mainnet scenario
+records:
+
+1. `PASS` in `tmp/scenario-summary.txt`
+2. `sdkOutcomeKind=success`
+3. merchant HTTP status 200
+4. a `receiptId` and `paidRequestId`
+5. matching successful `execute_prepared_request` and stored
+   `get_execution_result` evidence in the transcript
+
+If either mainnet rail cannot run, the release integration campaign is
+incomplete.
+
 Plan-specific commands:
 
 1. `npm run scenario:all`: full mixed sweep (first-party + third-party + mock)
@@ -124,7 +143,7 @@ The matching EVM testnet scenario path is:
 https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-sepolia
 ```
 
-The matching EVM mainnet scenario path is:
+The matching real-money EVM mainnet scenario path is:
 
 ```text
 https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-mainnet
@@ -143,7 +162,9 @@ Prerequisites:
 1. a reachable 402flow control plane is running, with hosted staging as the default at `https://api-staging.402flow.ai`
 2. the demo merchant is reachable, or the self-hosted demo merchant is running via `pnpm dev:demo-merchant` if you overrode the first-party base URL
 3. an org and agent exist and can authenticate through the SDK
-4. one compatible Base or Solana execution rail is enabled for that org, depending on the scenario
+4. funded Base and Solana mainnet execution rails are enabled for a full
+   `scenario:core` or `scenario:all` run; an individual scenario needs only its
+   matching rail
 5. either `X402FLOW_BOOTSTRAP_KEY` or `X402FLOW_RUNTIME_TOKEN` is set
 
 Example first-party revise run:

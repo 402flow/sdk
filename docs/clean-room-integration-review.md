@@ -17,28 +17,26 @@ inspection.
 
 ## Disposition
 
-Conditional pass.
+Pass with documented third-party limitations.
 
-The core SDK passed clean-room Base Sepolia and Solana devnet payments,
-idempotent retries, prepared execution, `AgentHarness`, strict TypeScript,
-legacy x402 fixtures, and both official adapter suites.
+The core SDK passed clean-room Base Sepolia, Base mainnet, Solana devnet, and
+Solana mainnet payments, idempotent retries, prepared execution, `AgentHarness`,
+strict TypeScript, legacy x402 fixtures, and both official adapter suites.
 
-The hosted demo merchant is not release-ready. Both test routes challenge an
-external HTTPS request with an `http://` resource URL. The merchant deployment
-must emit the externally visible HTTPS origin before the hosted smoke check can
-pass.
+The hosted demo merchant is release-ready for SDK integration testing. Three
+consecutive testnet smoke runs returned valid x402 v2 challenges with exact
+external HTTPS resource URLs. The expanded smoke now validates all four hosted
+routes. Fresh native SDK fulfillment returned HTTP 200 on Base Sepolia and
+Solana devnet. A subsequent `scenario:all` run passed all 21 scenarios,
+including three paid Base mainnet and three paid Solana mainnet fulfillments.
 
-The combined adapter package also has a large, provider-driven install surface.
-The clean install produced 317 dependencies and 11 npm audit findings. All
-reported findings traced through the Dexter dependency tree. The core SDK itself
-depends only on Zod.
-
-The reviewed `0.1.0` candidate subsequently upgraded the adapter from
+The reviewed `0.1.1` candidate subsequently upgraded the adapter from
 `@dexterai/x402` 3.9.1 to the exact 5.4.2 release. The adapter still passes all
-16 tests, typecheck, build, and dry-pack checks. The production-only audit now
+17 tests, typecheck, build, and dry-pack checks. The production-only audit
 reports five high findings on one unresolved path:
 `@dexterai/x402` → `@dexterai/vault`/`@solana/spl-token` →
 `@solana/buffer-layout-utils` → `bigint-buffer`.
+The core SDK itself depends only on Zod and reports zero audit findings.
 
 ## Clean-room results
 
@@ -47,9 +45,9 @@ reports five high findings on one unresolved path:
 | `fetchPaid` | Pass after documentation fix | Solana devnet returned success; exact retry reused the paid request, payment attempt, and receipt |
 | Prepare and execute | Pass | Base Sepolia prepared as `ready/execute`; exact retry reused the same receipt |
 | `AgentHarness` | Pass | Concurrent execute calls shared one result; lookup returned stored output; a later execute was rejected as consumed |
-| Base flow | Pass | Hosted Base Sepolia payment and fulfillment returned HTTP 200 |
-| Solana flow | Pass | Hosted Solana devnet payment and fulfillment returned HTTP 200 |
-| Third-party executor | Pass with install warning | Dexter and pay.sh typechecks, unit tests, integration tests, build, and help paths passed |
+| Base flow | Pass | Hosted Base Sepolia and three Base mainnet payments returned fulfilled HTTP 200 responses with receipts |
+| Solana flow | Pass | Hosted Solana devnet and three Solana mainnet payments returned fulfilled HTTP 200 responses with receipts |
+| Third-party executor | Pass with documented boundary | Dexter and pay.sh typechecks, 17 tests, build, and help paths passed; Dexter reached live authorization and returned a typed preflight failure for unsupported hosted testnets |
 | Abort signals | Pass with documented boundary | Probe aborts preserve platform errors; prepared execution does not retain the original signal |
 | Timeouts | Pass with documented boundary | Per-call custom fetch pattern covers merchant and control-plane calls |
 | Retry and idempotency | Pass | Hosted exact retries reused receipts; contract tests verify key forwarding and no hidden automatic retry |
@@ -57,7 +55,7 @@ reports five high findings on one unresolved path:
 | Payment failures | Pass | Preflight, execution failure, pending, and inconclusive fixtures remain typed |
 | Paid fulfillment failures | Pass | Receipt-backed fulfillment failure fixtures remain typed |
 | TypeScript ergonomics | Pass after README fix | Strict TypeScript 5.8 and 5.9 compile the executable examples |
-| Hosted merchant | Fail | Base Sepolia and Solana devnet challenge URLs downgrade HTTPS to HTTP |
+| Hosted merchant | Pass | All four challenge contracts passed; paid fulfillment passed on both testnets and both mainnets |
 
 Both live devnet receipts were provisional. This matches the documented receipt
 contract and must not be presented as final chain settlement proof.
@@ -70,12 +68,65 @@ The README accessed `result.receiptId` without narrowing `PaidResponse`.
 `PassthroughPaidResponse` has no receipt. The example now branches on
 `result.kind`, and strict executable examples are part of typechecking.
 
-### CL-002: Hosted challenges downgrade HTTPS resource URLs
+### CL-002: Hosted challenges downgraded HTTPS resource URLs
 
 Both documented test routes returned HTTP 402 with valid x402 v2 data, but
 `challenge.resource.url` used `http://` for an HTTPS request. Client-side
-rewriting would hide an origin-integrity defect, so the SDK does not rewrite it.
-`npm run smoke:hosted-demo` now fails on this mismatch.
+rewriting would have hidden an origin-integrity defect, so the SDK did not
+rewrite it. The merchant proxy fix now preserves the exact externally visible
+HTTPS URL, as verified by `npm run smoke:hosted-demo`.
+
+### CL-011: Hosted merchant availability regression was resolved
+
+The first post-deployment smoke returned valid 402 challenges with exact HTTPS
+resource URLs on both routes. A later deployment returned HTTP 503 with an nginx
+HTML body on both routes. After the merchant fix, three consecutive smoke runs
+and fresh paid fulfillment on both networks passed. The smoke test remains as a
+regression check; retries must not hide future availability failures.
+
+### CL-012: Dexter 5.4.2 does not resolve the hosted test networks
+
+The Dexter ESM client loaded, the SDK prepared the live challenge, and the
+control plane authorized delegated execution. Dexter then returned
+`no_payment_options` before signing because its public network resolver does not
+map Base Sepolia (`eip155:84532`) or Solana devnet. `detectStrategy()` recognizes
+the v2 challenge but produces no payable options, and `toNetworkRef()` returns
+`null` for both hosted test networks.
+
+The adapter normalizes this result to a typed `preflight_failed` outcome with
+`preflight_incompatible`; a regression test now protects that behavior. No
+signature or transaction was submitted. Dexter resolves the corresponding
+mainnet networks, but a funded mainnet-wallet settlement was explicitly waived
+for this review.
+
+### CL-013: Dexter's CommonJS entry path does not load in this dependency graph
+
+A direct CommonJS `createRequire()` probe failed with
+`ERR_PACKAGE_PATH_NOT_EXPORTED` while resolving `@dexterai/x402-core`. The
+supported ESM import path works and is what this ESM-only adapter uses. CommonJS
+provider loading is therefore an upstream Dexter packaging limitation, not a
+supported adapter runtime.
+
+### CL-014: Hosted mainnet coverage was hidden in the scenario suite
+
+The repository had Base and Solana mainnet harness fixtures, but the package
+README and hosted smoke command listed only testnets. The release disposition
+also did not include mainnet payment evidence. The README and smoke contract now
+cover all four hosted routes, and the scenario guide defines `scenario:core` as
+the default paid release campaign.
+
+The 2026-07-26 `scenario:all` run passed all six mainnet scenarios with HTTP 200
+fulfillment, receipt IDs, paid-request IDs, payment-attempt IDs, and stored
+`AgentHarness` results. Its representative ready-path receipts were
+`127f9769-9473-4be7-8701-c4853fd8ca69` on Base and
+`1f06366b-ff5c-4a77-81c9-5fea39db7393` on Solana.
+
+Public mainnet RPC verification confirmed the representative Base transaction
+`0x4c703997425e8c30265075ca0d0eb3beee0405f2e33e1174cdb4f01f35caa48d`
+succeeded with receipt status `0x1` in block `0x2ee2114`. The representative
+Solana signature
+`4RSCrujm68zB9Yt8qxjYPG5yBdkc4ZN5GfQmFCwmNkp6NfjUNq6YPcGgZBfAhUHBcqYX1QTQ1otb5R7LsfaadDRW`
+was finalized without error in slot `435431184`.
 
 ### CL-003: The README omitted the Base integration route
 
@@ -172,6 +223,13 @@ Inspected both package manifests, TypeScript configs, the release guide, and the
 Node 20/22 CI workflow to define runtime, TypeScript, entrypoint, and lockstep
 boundaries.
 
+### INS-007: Dexter live compatibility boundary
+
+After the funded-wallet test was waived, the review exercised Dexter 5.4.2
+against the live hosted challenges and inspected its public `detectStrategy()`
+and `toNetworkRef()` results. This isolated the testnet resolver boundary from
+wallet funding and led to CL-012 and executable normalization coverage.
+
 ## Formal compatibility review
 
 ### Public API stability
@@ -180,7 +238,8 @@ The root ESM entrypoint and current discriminated unions are coherent. Public
 stability tests cover the client, harness, body helpers, schemas, and version
 header. Deep `dist/` imports remain unsupported.
 
-Risk: this is an alpha line. Exact version pinning is required.
+Risk: `0.1.1` is an early stable-tag release. Exact version pinning remains
+recommended until consumers have validated their integration.
 
 ### Error taxonomy
 
@@ -190,9 +249,9 @@ explains the boundary instead of implying one universal SDK error base class.
 
 ### Semver boundaries
 
-The exact adapter peer dependency is appropriate for the current alpha line.
-Version lockstep is now tested. Provider dependency restructuring must wait for
-a breaking release.
+The exact adapter peer dependency is appropriate for the lockstep `0.1.x` line.
+Version lockstep is tested. Provider dependency restructuring must wait for a
+breaking release.
 
 ### Runtime and TypeScript compatibility
 
@@ -202,8 +261,9 @@ examples, and adapters with TypeScript 5.8.2 and 5.9.3.
 ### Request and response contract drift
 
 Runtime Zod validation protects control-plane responses. New tests protect
-legacy and current merchant challenge shapes. The hosted merchant's scheme drift
-is the outstanding contract failure.
+legacy and current merchant challenge shapes. The hosted origin and availability
+regressions are fixed, and the executable smoke test protects the exact external
+resource URL contract.
 
 ### Safe retry guidance
 
@@ -226,16 +286,28 @@ receipt-backed fulfillment failure states.
 Completed:
 
 - strict TypeScript 5.8.2 and 5.9.3
-- root lint, typecheck, and 91 tests
-- adapter lint, typecheck, and 16 tests
+- root lint, typecheck, and 92 tests
+- adapter lint, typecheck, and 17 tests
 - root and adapter dry-pack builds
 - Dexter and pay.sh example help paths
-- live Base Sepolia and Solana devnet payments
+- live Base Sepolia, Base mainnet, Solana devnet, and Solana mainnet payments
 - live exact-key retry and `AgentHarness` reuse
+- three consecutive hosted testnet challenge checks
+- four-route hosted challenge contract coverage
+- fresh hosted Base Sepolia and Solana devnet paid fulfillment
+- a passing 21-scenario `scenario:all` campaign
+- three successful Base mainnet and three successful Solana mainnet paid
+  fulfillments with HTTP 200, receipts, and stored harness results
+- Dexter 5.4.2 ESM live preparation and authorization through its unsupported
+  testnet preflight boundary
 
 Outstanding:
 
-- `npm run smoke:hosted-demo` fails until the hosted merchant emits HTTPS
-  resource URLs behind its reverse proxy
 - the combined adapter package retains the documented Dexter dependency audit
   exposure
+
+Accepted limitation:
+
+- a funded Dexter mainnet settlement was intentionally not run; Dexter 5.4.2
+  cannot use the hosted Base Sepolia or Solana devnet challenges, and the review
+  stops at the verified typed preflight boundary

@@ -5,7 +5,9 @@ const baseUrl =
   ?? 'https://demo-merchant-staging.402flow.ai';
 const routes = [
   '/demo-merchant/research-brief/base-sepolia',
+  '/demo-merchant/research-brief/base-mainnet',
   '/demo-merchant/research-brief/solana-devnet',
+  '/demo-merchant/research-brief/solana-mainnet',
 ];
 const body = JSON.stringify({
   topic: 'hosted demo smoke test',
