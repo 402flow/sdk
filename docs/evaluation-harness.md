@@ -95,7 +95,7 @@ Important behavior:
 
 1. state and execution results live only in memory inside the current process; they are not durable across process restarts or shared across hosts
 2. expiry is checked lazily when a record is accessed; there is no background cleanup loop
-3. a newer active preparation for the same method plus origin plus pathname supersedes the older one
+3. every preparation belongs to a preparation lineage identified by `preparationLineageId`; passing an earlier preparation's `preparationLineageId` into a new prepare call supersedes the older active preparations in that lineage only, while preparations in different lineages never supersede one another, even for the same endpoint
 4. concurrent execute calls for the same active `preparedId` share one in-flight execution in that same process
 5. after a `preparedId` is consumed, later execute calls return a stable harness-local rejection instead of creating another payment attempt implicitly
 6. hosts should prepare again if they want an explicit retry path

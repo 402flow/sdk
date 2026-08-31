@@ -610,6 +610,14 @@ export const sdkDelegatedExecutionResultSchema = z.object({
   executionStatus: sdkDelegatedExecutionStatusSchema,
   settlementEvidenceClass: settlementEvidenceClassSchema,
   merchantOutcome: sdkDelegatedMerchantOutcomeSchema,
+  // Executor-reported execution terms. When present, the control plane
+  // compares them with the stored authorization snapshot before finalization.
+  network: z.string().min(1).max(128).optional(),
+  asset: z.string().min(1).max(255).optional(),
+  amount: z.string().min(1).max(78).optional(),
+  payee: z.string().min(1).max(255).optional(),
+  facilitator: z.string().min(1).max(512).optional(),
+  executionProvider: paidRequestExecutionProviderSchema.optional(),
   settlementReference: z.string().min(1).max(255).optional(),
   paymentReference: z.string().min(1).max(255).optional(),
   evidenceSource: paymentProofSourceSchema.optional(),

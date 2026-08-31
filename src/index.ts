@@ -1530,7 +1530,7 @@ export class AgentPayClient {
     if (delegatedExecution) {
       const authorizationRequest = {
         ...delegatedExecution.request,
-        challenge: prepared.challenge as DetectedChallenge,
+        challenge: prepared.challenge,
       };
       const decisionRequest = this.createDecisionRequest(
         prepared.request.url,
@@ -1542,7 +1542,7 @@ export class AgentPayClient {
             : {}),
         },
         authorizationRequest,
-        prepared.challenge as DetectedChallenge,
+        prepared.challenge,
       );
       const authorization = await this.requestPaymentAuthorization(
         decisionRequest,
@@ -1602,7 +1602,7 @@ export class AgentPayClient {
       },
       {
         ...request,
-        challenge: prepared.challenge as DetectedChallenge,
+        challenge: prepared.challenge,
       },
     );
   }

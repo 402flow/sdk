@@ -58,6 +58,7 @@ export const defaultToolDefinitions = [
         headers: { type: 'object' },
         body: { type: 'string' },
         externalMetadata: { type: 'object' },
+        preparationLineageId: { type: 'string' },
       },
       required: ['url'],
     },
@@ -275,6 +276,13 @@ function validatePrepareArgs(args) {
 
   if (!isOptionalString(args.body)) {
     return createToolError('invalid_arguments', 'body must be a string when provided.');
+  }
+
+  if (!isOptionalString(args.preparationLineageId)) {
+    return createToolError(
+      'invalid_arguments',
+      'preparationLineageId must be a string when provided.',
+    );
   }
 
   if (args.headers !== undefined && !isStringRecord(args.headers)) {

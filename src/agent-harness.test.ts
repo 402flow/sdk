@@ -290,7 +290,7 @@ describe('AgentHarness local behaviors', () => {
     });
   });
 
-  it('supersedes older active prepared requests for the same endpoint path', async () => {
+  it('keeps parallel preparations for the same endpoint active in different lineages', async () => {
     const executePreparedRequest = vi.fn(async () => createSuccessPaidResponse());
     const harness = new AgentHarness({
       client: createStaticClient(
@@ -313,25 +313,106 @@ describe('AgentHarness local behaviors', () => {
         executePreparedRequest,
       ),
       createPreparedId: (() => {
-        const preparedIds = ['prepared-old', 'prepared-new'];
+        const preparedIds = ['prepared-first', 'prepared-second'];
         return () => preparedIds.shift() ?? 'unexpected-prepared-id';
       })(),
     });
 
-    await harness.preparePaidRequest({
+    const firstSummary = await harness.preparePaidRequest({
       url: 'https://merchant.example.com/public-holidays?country=DE&year=2025',
       method: 'GET',
     });
-    await harness.preparePaidRequest({
+    const secondSummary = await harness.preparePaidRequest({
       url: 'https://merchant.example.com/public-holidays?country=DE&year=2026',
       method: 'GET',
     });
 
+    expect(firstSummary.preparationLineageId).toEqual(expect.any(String));
+    expect(secondSummary.preparationLineageId).toEqual(expect.any(String));
+    expect(firstSummary.preparationLineageId).not.toBe(
+      secondSummary.preparationLineageId,
+    );
+    expect(harness.getPreparedRecord('prepared-first').state).toBe('active');
+    expect(harness.getPreparedRecord('prepared-second').state).toBe('active');
+
+    const firstExecute = await harness.executePreparedRequest({
+      preparedId: 'prepared-first',
+    });
+    const secondExecute = await harness.executePreparedRequest({
+      preparedId: 'prepared-second',
+    });
+
+    expect(executePreparedRequest).toHaveBeenCalledTimes(2);
+    expect(firstExecute).toMatchObject({
+      preparedId: 'prepared-first',
+      harnessDisposition: 'executed',
+      sdkOutcomeKind: 'success',
+    });
+    expect(secondExecute).toMatchObject({
+      preparedId: 'prepared-second',
+      harnessDisposition: 'executed',
+      sdkOutcomeKind: 'success',
+    });
+  });
+
+  it('supersedes only older active preparations in the same lineage', async () => {
+    const executePreparedRequest = vi.fn(async () => createSuccessPaidResponse());
+    const harness = new AgentHarness({
+      client: createStaticClient(
+        [
+          createReadyPrepared({
+            request: {
+              url: 'https://merchant.example.com/public-holidays?country=DE',
+              method: 'GET',
+              headers: {},
+            },
+          }),
+          createReadyPrepared({
+            request: {
+              url: 'https://merchant.example.com/unrelated-lookup',
+              method: 'GET',
+              headers: {},
+            },
+          }),
+          createReadyPrepared({
+            request: {
+              url: 'https://merchant.example.com/public-holidays?country=DE&year=2026',
+              method: 'GET',
+              headers: {},
+            },
+          }),
+        ],
+        executePreparedRequest,
+      ),
+      createPreparedId: (() => {
+        const preparedIds = ['prepared-old', 'prepared-unrelated', 'prepared-new'];
+        return () => preparedIds.shift() ?? 'unexpected-prepared-id';
+      })(),
+    });
+
+    const originalSummary = await harness.preparePaidRequest({
+      url: 'https://merchant.example.com/public-holidays?country=DE',
+      method: 'GET',
+    });
+    await harness.preparePaidRequest({
+      url: 'https://merchant.example.com/unrelated-lookup',
+      method: 'GET',
+    });
+    const revisedSummary = await harness.preparePaidRequest({
+      url: 'https://merchant.example.com/public-holidays?country=DE&year=2026',
+      method: 'GET',
+      preparationLineageId: originalSummary.preparationLineageId,
+    });
+
+    expect(revisedSummary.preparationLineageId).toBe(
+      originalSummary.preparationLineageId,
+    );
     expect(harness.getPreparedRecord('prepared-old')).toMatchObject({
       preparedId: 'prepared-old',
       state: 'superseded',
       supersededByPreparedId: 'prepared-new',
     });
+    expect(harness.getPreparedRecord('prepared-unrelated').state).toBe('active');
 
     const staleExecute = await harness.executePreparedRequest({
       preparedId: 'prepared-old',

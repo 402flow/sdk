@@ -19,8 +19,10 @@
  * Important behavior:
  * - State is kept only in memory inside this process.
  * - Prepared requests expire after a TTL.
- * - A newer active preparation for the same method + origin + pathname supersedes
- *   the older one.
+ * - Every preparation belongs to a preparation lineage. A new preparation that
+ *   reuses an earlier preparation's preparationLineageId supersedes the older
+ *   active preparations in that lineage only. Preparations in different
+ *   lineages never supersede one another, even for the same endpoint.
  * - Execution is rejected locally unless the stored preparation is still active,
  *   kind === 'ready', and nextAction === 'execute'.
  */
@@ -87,6 +89,13 @@ export type AgentHarnessPrepareInput = {
   headers?: Record<string, string>;
   body?: string;
   externalMetadata?: SdkExternalMetadata;
+  /**
+   * Identifier of the logical preparation lineage this request belongs to.
+   * Reuse the preparationLineageId returned by an earlier preparation when
+   * revising that same logical request so the revision supersedes it. Omit it
+   * for unrelated requests so they stay independently executable.
+   */
+  preparationLineageId?: string;
 };
 
 /** Host-facing input for the harness execute step. */
@@ -113,6 +122,7 @@ export type AgentHarnessExecutionBinding = {
 /** Summary returned to the host after preparation succeeds. */
 export type AgentHarnessPreparedSummary = {
   preparedId: string;
+  preparationLineageId: string;
   state: 'active';
   kind: SdkPreparedPaidRequest['kind'];
   protocol: SdkPreparedPaidRequest['protocol'];
@@ -163,6 +173,7 @@ export type AgentHarnessExecutionLookup = {
 /** Full internal record shape exposed for debugging and test inspection. */
 export type AgentHarnessPreparedRecord = {
   preparedId: string;
+  preparationLineageId: string;
   state: AgentHarnessPreparedState;
   createdAt: string;
   expiresAt: string;
@@ -184,12 +195,14 @@ export type AgentHarnessOptions = {
   preparedTtlMs?: number;
   now?: () => Date;
   createPreparedId?: () => string;
+  createLineageId?: () => string;
 };
 
 const defaultPreparedTtlMs = 5 * 60 * 1000;
 
 type StoredPreparedRecord = {
   preparedId: string;
+  preparationLineageId: string;
   state: AgentHarnessPreparedState;
   createdAt: string;
   expiresAt: string;
@@ -199,14 +212,6 @@ type StoredPreparedRecord = {
   executionResult?: AgentHarnessExecutionResult;
   executionPromise?: Promise<AgentHarnessExecutionResult>;
 };
-
-// Preparations supersede by stable execution target, not by full query/body, so a
-// newer attempt for the same endpoint path invalidates older active ones.
-function createSupersessionKey(binding: AgentHarnessExecutionBinding) {
-  const url = new URL(binding.url);
-
-  return `${binding.method}:${url.origin}${url.pathname}`;
-}
 
 function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
@@ -409,6 +414,7 @@ function summarizePreparedRecord(
 
   return cloneValue({
     preparedId: record.preparedId,
+    preparationLineageId: record.preparationLineageId,
     state: 'active' as const,
     kind: record.prepared.kind,
     protocol: record.prepared.protocol,
@@ -507,6 +513,7 @@ export class AgentHarness {
   private readonly preparedTtlMs: number;
   private readonly now: () => Date;
   private readonly createPreparedId: () => string;
+  private readonly createLineageId: () => string;
   private readonly preparedRecords = new Map<string, StoredPreparedRecord>();
 
   constructor(options: AgentHarnessOptions) {
@@ -514,6 +521,7 @@ export class AgentHarness {
     this.preparedTtlMs = options.preparedTtlMs ?? defaultPreparedTtlMs;
     this.now = options.now ?? (() => new Date());
     this.createPreparedId = options.createPreparedId ?? (() => randomUUID());
+    this.createLineageId = options.createLineageId ?? (() => randomUUID());
   }
 
   /**
@@ -541,8 +549,14 @@ export class AgentHarness {
 
     const createdAt = this.now();
     const preparedId = this.createPreparedId();
+    const suppliedLineageId = input.preparationLineageId?.trim();
+    const preparationLineageId =
+      suppliedLineageId && suppliedLineageId.length > 0
+        ? suppliedLineageId
+        : this.createLineageId();
     const record: StoredPreparedRecord = {
       preparedId,
+      preparationLineageId,
       state: 'active',
       createdAt: createdAt.toISOString(),
       expiresAt: new Date(createdAt.getTime() + this.preparedTtlMs).toISOString(),
@@ -616,6 +630,7 @@ export class AgentHarness {
 
     return cloneValue({
       preparedId: record.preparedId,
+      preparationLineageId: record.preparationLineageId,
       state: record.state,
       createdAt: record.createdAt,
       expiresAt: record.expiresAt,
@@ -777,16 +792,14 @@ export class AgentHarness {
   }
 
   private supersedeActiveRecords(nextRecord: StoredPreparedRecord) {
-    // Only one active preparation should survive for the same method + origin +
-    // pathname. Older active preparations become stale as soon as a newer one is stored.
-    const nextKey = createSupersessionKey(nextRecord.executionBinding);
-
+    // Supersession is scoped to one logical preparation lineage. Unrelated
+    // parallel preparations, even for the same endpoint, stay active.
     for (const record of this.preparedRecords.values()) {
       if (record.state !== 'active') {
         continue;
       }
 
-      if (createSupersessionKey(record.executionBinding) !== nextKey) {
+      if (record.preparationLineageId !== nextRecord.preparationLineageId) {
         continue;
       }
 

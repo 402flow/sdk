@@ -1,6 +1,6 @@
 {
   "name": "@402flow/sdk-third-party-executors",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Official supported delegated-execution adapters for @402flow/sdk.",
   "main": "dist/index.js",
@@ -9,7 +9,7 @@
     "node": ">=20.18.0"
   },
   "peerDependencies": {
-    "@402flow/sdk": "0.1.1"
+    "@402flow/sdk": "0.1.2"
   },
   "license": "Apache-2.0",
   "author": "402flow",
