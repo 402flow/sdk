@@ -1,8 +1,79 @@
 # Clean-room SDK Integration Review
 
-Review date: 2026-07-26
+Original clean-room review date: 2026-07-26
 
-Baseline:
+Current source review update: 2026-09-05, SDK and adapter `0.1.2`.
+
+## Current 0.1.2 status
+
+Both package manifests and the adapter's exact SDK peer dependency are aligned
+at `0.1.2`. On Node 22.22.1 under WSL with TypeScript 5.9.3,
+`npm run check:all` passed lint, typechecking, 93 core tests, and 17 adapter tests.
+After the dependency update, these checks passed again, along with
+`npm run pack:check` and `npm --prefix third-party-executors run pack:check`.
+The production-only core audit reports zero findings.
+
+Since the original review, `AgentHarness` has added explicit preparation
+lineages: revisions supersede preparations in the same lineage, while unrelated
+requests to the same endpoint remain independently executable. Delegated result
+schemas also accept optional executor-reported payment terms for control-plane
+comparison with the authorization snapshot. These changes are included in the
+current source checks.
+
+This update validates the current source checkout. The published-package,
+TypeScript 5.8, hosted merchant, and paid campaign results below are
+historical evidence from the original review; they were not rerun for this
+update and do not establish a fresh `0.1.2` release campaign pass.
+
+Funded Dexter mainnet settlement remains intentionally deferred. On 2026-09-05,
+the user confirmed that they do not intend to fund a Dexter wallet with real
+money yet. This is an accepted verification boundary, not an outstanding action
+for this review.
+
+### Current adapter dependency findings
+
+After dependency remediation on 2026-09-05,
+`npm --prefix third-party-executors audit --omit=dev` reports five high and two
+moderate findings (down from six high and two moderate):
+
+- Five high findings remain on the Dexter/Solana path to `bigint-buffer`, with
+  no fix reported by npm.
+- Two moderate findings affect `stream-json` and its dependent `jayson` through
+  `@solana/web3.js`.
+
+The adapter lockfile now resolves `fast-uri` to `3.1.7`, up from `3.1.4`, within
+`ajv`'s existing dependency range. Its high finding is cleared. Regenerating the
+lockfile also corrected its stale root SDK peer metadata from `0.1.1` to `0.1.2`,
+matching the adapter manifest. This lockfile update controls repository installs;
+it does not force existing consumer lockfiles to update transitive dependencies.
+
+The `stream-json`/`jayson` findings remain open despite npm reporting a fix
+available. The latest `jayson` (`4.3.0`) requires `stream-json` `^1.9.1` and uses
+CommonJS paths such as `stream-json/streamers/StreamValues`. The patched
+`stream-json` line starts at `3.5.0`; the current `3.6.0` uses ESM and different
+exported paths. It is not a compatible transitive override. No forced upgrade
+or downgrade was applied.
+
+The [stream-json advisory](https://github.com/advisories/GHSA-528h-pc64-c93x)
+concerns path filters and explicitly excludes `StreamValues`. The inspected
+`jayson` `parseStream` implementation uses `StreamValues` and `Verifier`, not
+those filters. That call path therefore does not appear affected by this
+specific advisory; the audit findings remain visible pending an upstream fix.
+
+A direct npm metadata check confirmed that Dexter's `latest` tag is still
+`5.4.2`; `next` is `6.0.0-rc.5`. The prerelease still depends on
+`@solana/spl-token` (`^0.4.9`). Its latest release, `0.4.15`, depends on
+`@solana/buffer-layout-utils` (`^0.3.0`), whose latest release still depends on
+`bigint-buffer` (`^1.1.5`). The prerelease therefore does not remove this path.
+It also requires Node 22, which conflicts with the adapter's Node 20.18 support.
+See the [Dexter versions](https://www.npmjs.com/package/@dexterai/x402?activeTab=versions)
+and [bigint-buffer advisory](https://github.com/advisories/GHSA-3gc7-fjrx-p6mg).
+
+Keep the tested Dexter pin for now. Removing the provider dependency tree from
+pay.sh-only installations remains a possible future breaking packaging change,
+as described in the [adapter guide](../third-party-executors/README.md#dependency-footprint).
+
+## Original review baseline
 
 - `@402flow/sdk@0.1.0-alpha.30` from npm
 - `@402flow/sdk-third-party-executors@0.1.0-alpha.30` from npm
@@ -15,7 +86,7 @@ The review started from the README returned by
 treated as black boxes until a documented failure or ambiguity required source
 inspection.
 
-## Disposition
+## Original review disposition
 
 Pass with documented third-party limitations.
 
@@ -238,7 +309,7 @@ The root ESM entrypoint and current discriminated unions are coherent. Public
 stability tests cover the client, harness, body helpers, schemas, and version
 header. Deep `dist/` imports remain unsupported.
 
-Risk: `0.1.1` is an early stable-tag release. Exact version pinning remains
+Risk at the original review: `0.1.1` was an early stable-tag release. Exact version pinning remains
 recommended until consumers have validated their integration.
 
 ### Error taxonomy
@@ -281,7 +352,7 @@ receipt-backed fulfillment failure states.
 - legacy `X-PAYMENT-*` headers
 - v2 `PAYMENT-REQUIRED` and CAIP-2 identifiers
 
-## Verification
+## Original review verification
 
 Completed:
 
