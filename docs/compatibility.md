@@ -1,7 +1,7 @@
 # SDK Compatibility
 
 This document defines the compatibility contract for `@402flow/sdk`. It covers
-the current `0.1.0-alpha` release line. Pin an exact alpha version in production.
+the `0.1.x` release line, currently `0.1.2`. Pin an exact version in production.
 
 ## Public API stability
 
@@ -67,14 +67,15 @@ try {
 
 ## Semver boundaries
 
-The package is pre-1.0 and uses alpha prereleases. Until `1.0.0`:
+The current release has no prerelease suffix, but the package remains pre-1.0.
+Until `1.0.0`:
 
 - Pin exact versions.
 - Treat changes to exported types, discriminants, package entrypoints, required
   request fields, and error fields as breaking changes.
 - Release the SDK and official adapter package in lockstep.
-- Do not infer compatibility between different alpha versions from npm's
-  default prerelease range behavior.
+- For alpha prereleases, do not infer compatibility between different alpha
+  versions from npm's default prerelease range behavior.
 
 After 1.0, additive optional fields and new error reason codes can ship in a
 minor release. Removing or renaming exports, fields, discriminants, protocols,
