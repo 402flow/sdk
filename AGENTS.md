@@ -4,6 +4,15 @@ Applies to the core SDK and `third-party-executors/`. Keep authorization, policy
 approvals, receipts, and spend controls in the 402flow control plane. Read only
 the task-relevant references below; examples and scenario setup belong there.
 
+## Local development environment
+
+Codex runs directly in WSL with bash. Run `npm` commands from the repository
+root; use `npm --prefix third-party-executors run <script>` for adapter scripts.
+Use the Linux Node/npm toolchain and the existing npm lockfiles. Check
+`node --version` and `command -v node npm` when diagnosing toolchain issues.
+If the available toolchain does not meet the requirements below, report the
+setup issue rather than adding Windows launch wrappers or hard-coded PATH fixes.
+
 ## Compatibility and payment safety
 
 - Preserve public exports, TypeScript names, discriminants, serialized fields,
