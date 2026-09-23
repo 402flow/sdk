@@ -18,7 +18,7 @@ export default tseslint.config(
     ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**'],
   },
   {
-    files: ['src/**/*.ts', 'test/**/*.ts', '*.ts'],
+    files: ['src/**/*.ts', 'test/**/*.ts', 'examples/openai-agents-api/*.ts', '*.ts'],
     extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       globals: globals.node,

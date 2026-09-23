@@ -4,6 +4,8 @@ This guide holds the longer-form usage material for `@402flow/sdk`.
 
 For the package front door, start with the root [README](../README.md).
 For model-host details, see [evaluation-harness.md](evaluation-harness.md).
+For the hosted Agents API capability probe, see
+[the Stage 1 example](../examples/openai-agents-api/README.md).
 For scenario packs and first-party versus third-party evaluation paths, see [harness-scenarios.md](harness-scenarios.md).
 
 ## Install

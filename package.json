@@ -1,6 +1,6 @@
 {
   "name": "@402flow/sdk",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Paid HTTP SDK for AI agents with an inspectable prepare/execute flow.",
   "private": false,
   "type": "module",
@@ -48,7 +48,7 @@
     "example:openai-harness": "npm run build && node examples/openai-agent-harness.mjs",
     "example:openai-tools-quickstart": "npm run build && node examples/openai-tools-quickstart.mjs",
     "install:all": "npm install && npm --prefix third-party-executors install",
-    "lint": "eslint src test vitest.config.ts && npm run typecheck",
+    "lint": "eslint examples/openai-agents-api/*.ts src test vitest.config.ts && npm run typecheck",
     "pack:check": "npm run build && npm pack --dry-run",
     "prepublishOnly": "npm run check:all",
     "prepack": "npm run build",
@@ -60,7 +60,9 @@
     "smoke:hosted-demo": "node scripts/check-hosted-demo.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "build:openai-agents-api": "tsc -p examples/openai-agents-api/tsconfig.json",
+    "example:openai-agents-api": "npm run build:openai-agents-api && node examples/openai-agents-api/run.mjs"
   },
   "dependencies": {
     "zod": "^3.24.2"
@@ -73,6 +75,7 @@
     "globals": "^15.15.0",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.1",
+    "undici": "6.28.1",
     "vitest": "^4.1.8"
   }
 }
