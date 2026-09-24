@@ -15,6 +15,7 @@ import {
   loadOpenAiHarnessScenario,
 } from './openai-harness/inputs.mjs';
 import { createMockClient } from './openai-harness/mock-client.mjs';
+import { createCoreCampaignClient } from './openai-harness/core-campaign-client.mjs';
 import { defaultTranscriptFileForScenario } from './openai-harness/transcript-paths.mjs';
 import {
   createClientFromEnv,
@@ -472,12 +473,30 @@ async function runHarnessSession({
   maxTurns,
   preparedTtlMs,
   scenarioDefinition,
+  transcriptFile,
 }) {
   const apiKey = getRequiredEnv('OPENAI_API_KEY');
   const openai = createOpenAiClient(apiKey);
-  const client = scenarioDefinition?.mock
+  let client = scenarioDefinition?.mock
     ? createMockClient(scenarioDefinition.mock)
     : await createClientFromEnv('harness');
+  if (process.env.X402FLOW_CORE_CAMPAIGN_ID && !scenarioDefinition?.mock) {
+    client = createCoreCampaignClient({
+      client,
+      scenario: scenarioDefinition,
+      campaignId: process.env.X402FLOW_CORE_CAMPAIGN_ID,
+      async onAttempt(attempt) {
+        if (!transcriptFile) throw new Error('Core campaign requires an evidence file.');
+        await mkdir(dirname(resolve(transcriptFile)), { recursive: true });
+        await writeFile(`${transcriptFile}.attempt.json`, JSON.stringify({
+          ...attempt,
+          organization: process.env.X402FLOW_ORGANIZATION,
+          agent: process.env.X402FLOW_AGENT,
+          recordedAt: new Date().toISOString(),
+        }, null, 2), { flag: 'wx', mode: 0o600 });
+      },
+    });
+  }
   const harness = new AgentHarness({
     client,
     preparedTtlMs,
@@ -502,7 +521,7 @@ async function runHarnessSession({
     handlers: tools,
     maxTurns,
     maxTurnsExceededMessage: `Exceeded max turns (${maxTurns}) before the model finished.`,
-    onToolCall({
+    async onToolCall({
       turn,
       responseId,
       toolCall,
@@ -522,6 +541,14 @@ async function runHarnessSession({
 
       console.log(`\n[tool] ${toolCall.name}`);
       console.log(JSON.stringify(toolResult, null, 2));
+      if (transcriptFile) await writeTranscriptFile(transcriptFile, transcript);
+      if (process.env.X402FLOW_CORE_CAMPAIGN_ID && toolCall.name === 'execute_prepared_request'
+        && (toolResult.harnessDisposition !== 'executed'
+          || toolResult.sdkOutcomeKind !== (scenarioDefinition?.expectedOutcomeKind ?? 'success')
+          || (toolResult.sdkOutcomeKind === 'success' && (toolResult.status !== 200
+            || !toolResult.receiptId || !toolResult.paidRequestId)))) {
+        throw new Error('Core campaign stopped after an unexpected execution outcome; inspect saved evidence before any retry.');
+      }
     },
   });
 
@@ -595,6 +622,7 @@ async function main() {
     prompt,
     preset: args.preset,
     scenarioDefinition: promptResolution?.scenario,
+    transcriptFile,
   });
 
   if (transcriptFile) {

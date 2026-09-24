@@ -15,9 +15,20 @@ npm run pack:check
 
 `npm run check:all` validates the main SDK package first and then the separate `third-party-executors` package.
 
-`npm run smoke:hosted-demo` makes unpaid probes against the public Base Sepolia
-and Solana devnet routes. Do not publish customer-facing demo URLs while this
-check fails.
+`npm run smoke:hosted-demo` makes unpaid probes against the public Base Sepolia,
+Base mainnet, Solana devnet, and Solana mainnet routes. Do not publish
+customer-facing demo URLs while this check fails.
+
+Also run `npm --prefix third-party-executors run pack:check` and verify installed
+tarball imports and consumer TypeScript compilation, as covered by SDK CI.
+
+The release integration gate is `npm run scenario:core`; see
+[the scenario campaign](harness-scenarios.md) for prerequisites and required
+evidence. This command clears `tmp/`, so preserve any hosted probe reports and
+recovery checkpoints first. It includes three paid Base mainnet and three paid
+Solana mainnet requests. Obtain payment authorization before running it, and
+use a control plane that accepts the candidate SDK version. Both rails must
+pass; local tests and unpaid probes do not replace this campaign.
 
 ## Publish Order
 

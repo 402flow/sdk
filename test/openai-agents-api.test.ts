@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import * as sdk from '../src/index.js';
+import * as sdk from '@402flow/sdk';
 import { main } from '../examples/openai-agents-api/cli.js';
 import {
   checkAccess,
@@ -649,11 +649,61 @@ describe('launcher configuration', () => {
 
 describe('compiled hosted payload', () => {
   beforeAll(() => {
-    execFileSync(process.execPath, [
-      'node_modules/typescript/bin/tsc',
-      '-p',
-      'examples/openai-agents-api/tsconfig.json',
-    ]);
+    execFileSync(process.execPath, ['examples/openai-agents-api/build.mjs'], {
+      stdio: 'pipe',
+    });
+  });
+  it('loads the packaged SDK and rewritten paid-request modules in an isolated workspace', () => {
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `
+      import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
+      import { createHash } from 'node:crypto';
+      import { execFileSync } from 'node:child_process';
+      import { tmpdir } from 'node:os';
+      import { join, resolve } from 'node:path';
+      import { pathToFileURL } from 'node:url';
+      import { AgentPayClient } from '@402flow/sdk';
+      import { buildPaidRequestSession } from './examples/openai-agents-api/dist/paid-request.js';
+      import { makeCheckpoint, controlPlaneBaseUrl, requestBody, paymentAsset, merchantUrl } from './examples/openai-agents-api/dist/paid-request-contract.js';
+      const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
+      const config={operationId:id(1),organizationId:id(2),agentId:id(3),credentialId:id(4),requestPolicyId:id(7),budgetPolicyId:id(5),model:'test-model',expectedOutcome:'denied',maxAmountMinor:'1000',maxBudgetAmountMinor:'100000'};
+      const identity={organization:'test-org',agent:'test-agent'};
+      const challenge={x402Version:2,resource:{url:merchantUrl},accepts:[{scheme:'exact',network:'eip155:84532',asset:paymentAsset,amount:'1000',payTo:'0x1111111111111111111111111111111111111111',maxTimeoutSeconds:60}]};
+      const client=new AgentPayClient({controlPlaneBaseUrl:controlPlaneBaseUrl,...identity,auth:{type:'runtimeToken',runtimeToken:'unused'},fetch:async()=>new Response('{}',{status:402,headers:{'payment-required':Buffer.from(JSON.stringify(challenge)).toString('base64')}})});
+      const checkpoint=makeCheckpoint(config,identity,await client.preparePaidRequest(merchantUrl,{method:'POST',headers:{'content-type':'application/json'},body:requestBody}));
+      const payload=await buildPaidRequestSession(checkpoint,'vault-fixture','test-model');
+      const directory=await mkdtemp(join(tmpdir(),'packaged-hosted-'));
+      try {
+        for(const file of payload.environment.files)await writeFile(join(directory,file.path.replace('/workspace/','')),Buffer.from(file.data,'base64'));
+        const sdkDirectory=join(directory,'node_modules/@402flow/sdk');await mkdir(sdkDirectory,{recursive:true});
+        execFileSync('tar',['-xzf',join(directory,'402flow-sdk-0.1.3.tgz'),'-C',sdkDirectory,'--strip-components=1']);
+        for(const name of ['zod','undici'])await symlink(resolve('node_modules',name),join(directory,'node_modules',name));
+        const { executeCheckpoint }=await import(pathToFileURL(join(directory,'execute-request.mjs')).href);
+        let version;let calls=0;
+        const result=await executeCheckpoint(checkpoint,'inert-placeholder',async(input,init)=>{
+          if(String(input)!==controlPlaneBaseUrl+'/api/sdk/payment-decisions')throw new Error('unexpected route');
+          version=new Headers(init.headers).get('x-402flow-sdk-version');calls++;
+          return new Response(JSON.stringify({outcome:'deny',paidRequestId:id(6),reasonCode:'policy_denied',reason:'fixture'}),{status:200,headers:{'content-type':'application/json'}});
+        });
+        const tarball=payload.environment.files.find(file=>file.path.endsWith('.tgz'));
+        console.log(JSON.stringify({version,calls,result,domains:payload.environment.network.allowed_domains,multiAgent:payload.agent.multi_agent,hashMatches:createHash('sha256').update(Buffer.from(tarball.data,'base64')).digest('hex')===payload.metadata.sdk_artifact_sha256}));
+      } finally {await rm(directory,{recursive:true,force:true});}
+    `,
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(JSON.parse(output)).toMatchObject({
+      version: '0.1.3',
+      calls: 1,
+      result: { kind: 'denied' },
+      domains: ['api-staging.402flow.ai'],
+      multiAgent: { enabled: false },
+      hashMatches: true,
+    });
   });
   it('pins the SDK and isolates the vault from plaintext environment configuration', async () => {
     // Exercise compiled assets exactly as the Node 20 launcher loads them.
@@ -673,8 +723,8 @@ describe('compiled hosted payload', () => {
     expect(payload.vault_ids).toEqual(['vault-1']);
     expect(payload.environment.env).toBeUndefined();
     expect(payload.environment.packages.npm).toEqual([
-      '@402flow/sdk@0.1.2',
       'undici@6.28.1',
+      'zod@3.25.76',
     ]);
     expect(payload.environment.network.allowed_domains).toEqual([
       'canary.example.net',
@@ -686,7 +736,9 @@ describe('compiled hosted payload', () => {
       max_concurrent_subagents: 2,
     });
     const source = Buffer.from(
-      payload.environment.files[0].data as string,
+      (payload.environment.files as Array<{ path: string; data: string }>).find(
+        (file: { path: string }) => file.path === '/workspace/probe.mjs',
+      )!.data,
       'base64',
     ).toString();
     expect(source).toContain("from './transport.mjs'");

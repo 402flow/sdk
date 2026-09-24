@@ -23,14 +23,21 @@ export async function main(
       model: { type: 'string' },
       'canary-url': { type: 'string' },
       report: { type: 'string' },
+      config: { type: 'string' },
+      'allow-testnet-payment': { type: 'boolean' },
       help: { type: 'boolean' },
     },
   });
   const command = positionals[0] ?? 'plan';
   if (values.help) {
     console.log(
-      'Usage: npm run example:openai-agents-api -- plan|preflight|run|cleanup [--model ID] [--canary-url HTTPS_URL] [--report PATH]',
+      'Usage: npm run example:openai-agents-api -- plan|preflight|run|cleanup [--model ID] [--canary-url HTTPS_URL] [--report PATH]; paid-plan|paid-preflight|paid-run --config PATH [--allow-testnet-payment]; paid-cleanup|paid-reconcile --report PATH',
     );
+    return;
+  }
+  if (command.startsWith('paid-') && positionals.length === 1) {
+    const { mainPaidRequest } = await import('./paid-request-cli.js');
+    await mainPaidRequest(command, values, env);
     return;
   }
   if (
@@ -48,7 +55,7 @@ export async function main(
           stage: 1,
           networkCalls: 0,
           paidRequests: 0,
-          sdk: '0.1.2',
+          sdk: '0.1.3',
           configured: {
             apiKey: Boolean(env.OPENAI_API_KEY),
             model: Boolean(model),

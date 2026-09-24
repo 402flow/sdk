@@ -1,3 +1,4 @@
+import { hostedSdk } from './hosted-sdk.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { isIP } from 'node:net';
@@ -77,7 +78,10 @@ export const reportSchema = z
   .object({
     schemaVersion: z.literal(1),
     versions: z
-      .object({ sdk: z.literal('0.1.2'), openAiBeta: z.literal('agents=v1') })
+      .object({
+        sdk: z.enum(['0.1.2', '0.1.3']),
+        openAiBeta: z.literal('agents=v1'),
+      })
       .strict(),
     config: configSchema,
     startedAt: z.string().datetime(),
@@ -286,6 +290,7 @@ export async function buildSession(
   vaultId: string,
   canaryHash: string,
 ) {
+  const artifact = await hostedSdk();
   const code = await readFile(
     new URL('./sandbox-probe.js', import.meta.url),
     'utf8',
@@ -295,7 +300,10 @@ export async function buildSession(
     'utf8',
   );
   return {
-    metadata: { reference_probe_run_id: config.runId },
+    metadata: {
+      reference_probe_run_id: config.runId,
+      sdk_artifact_sha256: artifact.sha256,
+    },
     agent: {
       model: config.model,
       instructions:
@@ -314,8 +322,10 @@ export async function buildSession(
           ),
         ],
       },
-      packages: { npm: ['@402flow/sdk@0.1.2', 'undici@6.28.1'] },
+      packages: artifact.packages,
+      setup_commands: artifact.setup_commands,
       files: [
+        artifact.file,
         {
           type: 'inline',
           path: '/workspace/probe.mjs',
@@ -511,7 +521,7 @@ export async function runProbe(
   const timeoutMs = options.timeoutMs ?? 300_000;
   const report: ProbeReport = {
     schemaVersion: 1,
-    versions: { sdk: '0.1.2', openAiBeta: 'agents=v1' },
+    versions: { sdk: '0.1.3', openAiBeta: 'agents=v1' },
     config,
     startedAt: new Date().toISOString(),
     state: 'running',

@@ -1,0 +1,11 @@
+{
+  "operationId": "00000000-0000-4000-8000-000000000001",
+  "organizationId": "00000000-0000-4000-8000-000000000002",
+  "agentId": "00000000-0000-4000-8000-000000000003",
+  "requestPolicyId": "00000000-0000-4000-8000-000000000004",
+  "budgetPolicyId": "00000000-0000-4000-8000-000000000005",
+  "model": "gpt-6-luna",
+  "expectedOutcome": "success",
+  "maxAmountMinor": "1000",
+  "maxBudgetAmountMinor": "100000"
+}

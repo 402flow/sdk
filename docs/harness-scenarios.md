@@ -20,6 +20,17 @@ paid Solana mainnet scenarios. At the current merchant price, that is 0.006 USDC
 of mainnet merchant spend, plus any execution-rail network fees. Both mainnet
 rails must be funded and enabled.
 
+The runner stops at the first process, transcript, or outcome-validation failure.
+For `scenario:core`, each live scenario is also limited by the caller to one
+execution attempt, on its configured merchant route and network, for at most
+1000 minor units of USDC (0.001 USDC). The six mainnet scenarios therefore cannot
+submit more than 0.006 USDC of merchant payments in one run. These caller limits
+do not replace control-plane policy or include network fees and model charges.
+The runner assigns a business idempotency key and saves an `.attempt.json`
+record before execution. It saves partial tool transcripts as calls complete.
+Do not rerun a failed campaign until uncertain outcomes are reconciled: a new
+campaign uses new keys and clears the previous `tmp/` evidence.
+
 The mainnet portion passes only when every Base and Solana mainnet scenario
 records:
 

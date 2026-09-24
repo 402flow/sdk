@@ -1,7 +1,7 @@
 # SDK Compatibility
 
 This document defines the compatibility contract for `@402flow/sdk`. It covers
-the `0.1.x` release line, currently `0.1.2`. Pin an exact version in production.
+the `0.1.x` release line, currently `0.1.3`. Pin an exact version in production.
 
 ## Public API stability
 

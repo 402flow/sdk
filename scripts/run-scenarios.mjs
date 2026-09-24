@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { isDeepStrictEqual } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { loadOpenAiHarnessScenario } from '../examples/openai-harness/inputs.mjs';
 import {
   createScenarioArtifactPaths,
@@ -100,7 +103,7 @@ function loadScenarioDefinition(scenarioName) {
   );
 }
 
-function runHarnessScenario({ scenario, preset, transcriptPath }) {
+function runHarnessScenario({ scenario, preset, transcriptPath, campaignId }) {
   try {
     const stdout = execFileSync(
       'node',
@@ -116,7 +119,10 @@ function runHarnessScenario({ scenario, preset, transcriptPath }) {
       {
         cwd: sdkRoot,
         encoding: 'utf8',
-        env: process.env,
+        env: {
+          ...process.env,
+          X402FLOW_CORE_CAMPAIGN_ID: campaignId ?? '',
+        },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
@@ -191,6 +197,7 @@ function findExecutionLookup(toolCalls) {
     (toolCall, index) =>
       index > executeIndex
       && toolCall?.name === 'get_execution_result'
+      && toolCall?.result?.executionResult?.preparedId === toolCalls[executeIndex]?.result?.preparedId
       && toolCall?.result?.executionResult?.harnessDisposition === 'executed',
   );
 }
@@ -214,12 +221,24 @@ function extractSemanticOutcome(transcript, scenarioDefinition) {
   }
 
   const executionResult = executionLookup.result.executionResult;
+  const executions = toolCalls.filter((call) => call?.name === 'execute_prepared_request');
+  if (executions.length !== 1 || !isDeepStrictEqual(executions[0].result, executionResult)) {
+    return createSemanticFailure(
+      'Scenario must record one execution and an identical stored execution result.',
+      transcript,
+    );
+  }
 
   if (executionResult?.sdkOutcomeKind !== expectedOutcomeKind) {
     return createSemanticFailure(
       `Scenario expected sdkOutcomeKind ${expectedOutcomeKind} but observed ${executionResult?.sdkOutcomeKind ?? 'none'}.`,
       transcript,
     );
+  }
+  if (expectedOutcomeKind === 'success' && (executionResult.status !== 200
+    || typeof executionResult.receiptId !== 'string' || !executionResult.receiptId
+    || typeof executionResult.paidRequestId !== 'string' || !executionResult.paidRequestId)) {
+    return createSemanticFailure('Successful scenario requires HTTP 200, receiptId, and paidRequestId.', transcript);
   }
 
   const finalText =
@@ -286,80 +305,93 @@ function formatFailure(output, transcript, semanticFailureText) {
   return [finalText, outputTail].filter(Boolean).join('\n\n');
 }
 
-rmSync(tmpDir, { recursive: true, force: true });
-mkdirSync(scenarioRunsDir, { recursive: true });
+export { buildScenarioPlan, extractSemanticOutcome, loadScenarioDefinition };
 
-const selectedPlan = parsePlanName(process.argv.slice(2));
-const scenarioPlan = buildScenarioPlan(selectedPlan);
+function runScenarioPlan() {
+  rmSync(tmpDir, { recursive: true, force: true });
+  mkdirSync(scenarioRunsDir, { recursive: true });
 
-const summaryLines = [];
-let hadFailure = false;
+  const selectedPlan = parsePlanName(process.argv.slice(2));
+  const scenarioPlan = buildScenarioPlan(selectedPlan);
+  const campaignId = selectedPlan === 'core' ? randomUUID() : undefined;
 
-summaryLines.push(`Scenario plan: ${selectedPlan}`);
-summaryLines.push('');
+  const summaryLines = [];
+  let hadFailure = false;
 
-for (const [scenario, preset] of scenarioPlan) {
-  const scenarioDefinition = loadScenarioDefinition(scenario);
-  const { transcriptPath, logPath } = createScenarioArtifactPaths(scenario);
-  const result = runHarnessScenario({ scenario, preset, transcriptPath });
-
-  writeFileSync(logPath, result.output, 'utf8');
-
-  summaryLines.push(`=== ${scenario} (${preset}) ===`);
-
-  if (result.exitCode !== 0) {
-    hadFailure = true;
-    summaryLines.push(`FAIL exit=${result.exitCode}`);
-    summaryLines.push(result.output.trim() || 'Harness process exited without output.');
-    summaryLines.push('');
-    continue;
-  }
-
-  let transcript;
-
-  try {
-    transcript = readTranscript(transcriptPath);
-  } catch (error) {
-    hadFailure = true;
-    summaryLines.push('FAIL transcript_missing');
-    summaryLines.push(error instanceof Error ? error.message : String(error));
-    summaryLines.push('');
-    continue;
-  }
-
-  const semanticOutcome = extractSemanticOutcome(transcript, scenarioDefinition);
-
-  if (!semanticOutcome.ok) {
-    hadFailure = true;
-    summaryLines.push('FAIL semantic');
-    summaryLines.push(
-      formatFailure(result.output, transcript, semanticOutcome.finalText),
-    );
-    summaryLines.push('');
-    continue;
-  }
-
-  summaryLines.push('PASS');
-  summaryLines.push(`sdkOutcomeKind=${semanticOutcome.outcomeKind}`);
-  summaryLines.push(`status=${semanticOutcome.status}`);
-  if (semanticOutcome.receiptId) {
-    summaryLines.push(`receiptId=${semanticOutcome.receiptId}`);
-  }
-  if (semanticOutcome.paidRequestId) {
-    summaryLines.push(`paidRequestId=${semanticOutcome.paidRequestId}`);
-  }
+  summaryLines.push(`Scenario plan: ${selectedPlan}`);
+  if (campaignId) summaryLines.push(`Campaign ID: ${campaignId}`);
   summaryLines.push('');
-}
 
-writeFileSync(summaryPath, `${summaryLines.join('\n')}\n`, 'utf8');
+  for (const [scenario, preset] of scenarioPlan) {
+    const scenarioDefinition = loadScenarioDefinition(scenario);
+    const { transcriptPath, logPath } = createScenarioArtifactPaths(scenario);
+    const result = runHarnessScenario({ scenario, preset, transcriptPath, campaignId });
 
-if (hadFailure) {
-  process.stderr.write(
-    `Scenario run failed for plan ${selectedPlan}. See ${summaryPath}\n`,
+    writeFileSync(logPath, result.output, 'utf8');
+
+    summaryLines.push(`=== ${scenario} (${preset}) ===`);
+
+    if (result.exitCode !== 0) {
+      hadFailure = true;
+      summaryLines.push(`FAIL exit=${result.exitCode}`);
+      summaryLines.push(result.output.trim() || 'Harness process exited without output.');
+      summaryLines.push('');
+      break;
+    }
+
+    let transcript;
+
+    try {
+      transcript = readTranscript(transcriptPath);
+    } catch (error) {
+      hadFailure = true;
+      summaryLines.push('FAIL transcript_missing');
+      summaryLines.push(error instanceof Error ? error.message : String(error));
+      summaryLines.push('');
+      break;
+    }
+
+    const semanticOutcome = extractSemanticOutcome(transcript, scenarioDefinition);
+
+    if (!semanticOutcome.ok) {
+      hadFailure = true;
+      summaryLines.push('FAIL semantic');
+      summaryLines.push(
+        formatFailure(result.output, transcript, semanticOutcome.finalText),
+      );
+      summaryLines.push('');
+      break;
+    }
+
+    summaryLines.push('PASS');
+    summaryLines.push(`sdkOutcomeKind=${semanticOutcome.outcomeKind}`);
+    summaryLines.push(`status=${semanticOutcome.status}`);
+    if (semanticOutcome.receiptId) {
+      summaryLines.push(`receiptId=${semanticOutcome.receiptId}`);
+    }
+    if (semanticOutcome.paidRequestId) {
+      summaryLines.push(`paidRequestId=${semanticOutcome.paidRequestId}`);
+    }
+    summaryLines.push('');
+    writeFileSync(summaryPath, `${summaryLines.join('\n')}\n`, 'utf8');
+    process.stdout.write(`PASS ${scenario}\n`);
+  }
+
+  writeFileSync(summaryPath, `${summaryLines.join('\n')}\n`, 'utf8');
+
+  if (hadFailure) {
+    process.stderr.write(
+      `Scenario run failed for plan ${selectedPlan}. See ${summaryPath}\n`,
+    );
+    process.exit(1);
+  }
+
+  process.stdout.write(
+    `Scenario run passed for plan ${selectedPlan}. Results written to ${summaryPath}\n`,
   );
-  process.exit(1);
 }
 
-process.stdout.write(
-  `Scenario run passed for plan ${selectedPlan}. Results written to ${summaryPath}\n`,
-);
+// Importing the evaluator for offline evidence review never runs a scenario.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runScenarioPlan();
+}

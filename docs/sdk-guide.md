@@ -4,8 +4,10 @@ This guide holds the longer-form usage material for `@402flow/sdk`.
 
 For the package front door, start with the root [README](../README.md).
 For model-host details, see [evaluation-harness.md](evaluation-harness.md).
-For the hosted Agents API capability probe, see
-[the Stage 1 example](../examples/openai-agents-api/README.md).
+For the hosted Agents API capability probe and durable testnet launcher, see
+[the reference integration](../examples/openai-agents-api/README.md). Stage 1
+passed hosted validation with the local 0.1.3 artifact; the paid-request flow has local test
+coverage, with authenticated hosted execution and testnet validation pending.
 For scenario packs and first-party versus third-party evaluation paths, see [harness-scenarios.md](harness-scenarios.md).
 
 ## Install

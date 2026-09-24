@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -49,14 +48,8 @@ export const hashAuthorization = (value: string) =>
   createHash('sha256').update(`Bearer ${value}`).digest('hex');
 
 async function loadInstalledPackage(name: string): Promise<unknown> {
-  const globalRoot = execFileSync('npm', ['root', '-g'], {
-    encoding: 'utf8',
-    timeout: 10_000,
-    stdio: ['ignore', 'pipe', 'ignore'],
-  }).trim();
-  const entry = createRequire(import.meta.url).resolve(name, {
-    paths: [globalRoot],
-  });
+  // Both packages are installed under /workspace by trusted session setup.
+  const entry = createRequire(import.meta.url).resolve(name);
   return import(pathToFileURL(entry).href) as Promise<unknown>;
 }
 
@@ -86,7 +79,7 @@ export async function createSandboxFetch(
 }
 
 // This file and transport.ts are compiled and supplied to the sandbox. Runtime
-// imports resolve the pinned global SDK and proxy transport packages.
+// imports resolve the supplied SDK tarball and pinned proxy transport package.
 export async function runSandboxProbe(
   config: SandboxConfig,
   actor: ProbeActor,
@@ -122,7 +115,7 @@ export async function runSandboxProbe(
           new Headers(init?.headers).get('authorization') ===
             `Bearer ${placeholder}` &&
           new Headers(init?.headers).get(sdk.sdkClientVersionHeaderName) ===
-            '0.1.2';
+            '0.1.3';
         // Intercept locally: this is never a real 402flow authenticated call.
         return Promise.resolve(new Response('{}', { status: 401 }));
       },
@@ -131,7 +124,7 @@ export async function runSandboxProbe(
       .lookupReceipt('00000000-0000-4000-8000-000000000000')
       .catch(() => undefined);
     checks.sdkPlaceholderHeader =
-      sdk.sdkClientVersion === '0.1.2' && headerMatches;
+      sdk.sdkClientVersion === '0.1.3' && headerMatches;
   } catch {
     /* A missing or incompatible package is a failed check. */
   }

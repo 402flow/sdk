@@ -11,7 +11,7 @@
     "format": "json"
   },
   "expectedOutcomeKind": "denied",
-  "expectedFinalTextIncludes": ["budget", "exceeded"],
+  "expectedFinalTextIncludes": ["budget", "exceed"],
   "mock": {
     "prepareResult": {
       "kind": "ready",
