@@ -22,6 +22,10 @@ export class ControlPlaneClient {
     method = 'GET',
     body?: unknown,
   ): Promise<unknown> {
+    // These operator endpoints return the whole workspace without pagination.
+    // Keep reads bounded, but allow enough history to verify no payment exists.
+    const isLifecycleList = method === 'GET' &&
+      /^\/organizations\/[^/]+\/(paid-requests|payment-attempts|receipts)$/.test(path);
     const response = await requestText(
       this.fetchImpl,
       `${controlPlaneBaseUrl}/api${path}`,
@@ -35,7 +39,7 @@ export class ControlPlaneClient {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
       30_000,
-      1_048_576,
+      (isLifecycleList ? 16 : 1) * 1_048_576,
     );
     if (
       [this.token, ...this.secrets].some(
@@ -447,8 +451,7 @@ export async function verifyPaymentEvidence(
       receipt.requestUrl !== merchantUrl ||
       receipt.requestMethod !== 'POST' ||
       receipt.authorizationOutcome !== 'allowed' ||
-      receipt.fulfillmentStatus !== 'succeeded' ||
-      receipt.settlementStatus !== 'confirmed'
+      receipt.fulfillmentStatus !== 'succeeded'
     )
       throw new ProbeError('paid_request_receipt_not_confirmed');
     if (
@@ -460,6 +463,16 @@ export async function verifyPaymentEvidence(
       receipt.evidenceSource === 'local_simulation'
     )
       throw new ProbeError('paid_request_receipt_attempt_mismatch');
+    // A fulfilled merchant receipt can precede the chain observer's finality
+    // update. Only this validated provisional state permits read-only polling.
+    if (receipt.settlementStatus !== 'confirmed') {
+      if (
+        receipt.status === 'provisional' &&
+        receipt.settlementStatus === 'reconciliation_required'
+      )
+        throw new ProbeError('paid_request_receipt_confirmation_pending');
+      throw new ProbeError('paid_request_receipt_not_confirmed');
+    }
   } else {
     if (
       outcome.kind !== 'denied' ||

@@ -15,7 +15,7 @@ export type ProbeConfig = {
   blockedUrl: string;
 };
 
-export type SandboxConfig = ProbeConfig & { canaryHash: string };
+export type SandboxConfig = ProbeConfig & { canaryHash: string; sdkVersion: string };
 export type ProbeActor = 'root' | 'child-a' | 'child-b';
 export type SandboxResult = {
   runId: string;
@@ -115,7 +115,7 @@ export async function runSandboxProbe(
           new Headers(init?.headers).get('authorization') ===
             `Bearer ${placeholder}` &&
           new Headers(init?.headers).get(sdk.sdkClientVersionHeaderName) ===
-            '0.1.3';
+            config.sdkVersion;
         // Intercept locally: this is never a real 402flow authenticated call.
         return Promise.resolve(new Response('{}', { status: 401 }));
       },
@@ -124,7 +124,7 @@ export async function runSandboxProbe(
       .lookupReceipt('00000000-0000-4000-8000-000000000000')
       .catch(() => undefined);
     checks.sdkPlaceholderHeader =
-      sdk.sdkClientVersion === '0.1.3' && headerMatches;
+      sdk.sdkClientVersion === config.sdkVersion && headerMatches;
   } catch {
     /* A missing or incompatible package is a failed check. */
   }

@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AgentPayClient } from '@402flow/sdk';
+import { AgentPayClient, sdkClientVersion } from '@402flow/sdk';
 import {
   makeCheckpoint,
   controlPlaneBaseUrl,
@@ -376,6 +377,11 @@ describe('Paid request durable boundary', () => {
       wait: async () => undefined,
     });
     expect(report.state).toBe('passed');
+    expect(report.sdkVersion).toBe(sdkClientVersion);
+    expect(paidRequestReportSchema.parse({ ...report, sdkVersion: '0.1.3' }).sdkVersion)
+      .toBe('0.1.3');
+    expect(paidRequestReportSchema.safeParse({ ...report, sdkVersion: '../other' }).success)
+      .toBe(false);
     expect(report.runtimeCleanup).toBe('revoked');
     expect(Object.values(report.cleanup)).toEqual([
       'deleted',
@@ -405,6 +411,78 @@ describe('Paid request durable boundary', () => {
     expect(p.calls.some((c) => c.url.includes('credentialId=undefined'))).toBe(
       false,
     );
+  });
+  it('waits for chain confirmation by reading the same receipt without repeating execution setup', async () => {
+    const p = provider();
+    const route = `${p.org}/receipts/${receipt.receiptId}`;
+    p.records[route] = {
+      receipt: { ...receipt, status: 'provisional', settlementStatus: 'reconciliation_required' },
+    };
+    const wait = vi.fn(async () => { p.records[route] = { receipt }; });
+    const report = await runPaidRequest(config, secrets, await path(), {
+      fetchImpl: p.fetchImpl, sessionBuilder: async () => ({}), wait,
+    });
+    expect(report.state).toBe('passed');
+    expect(wait).toHaveBeenCalledExactlyOnceWith(5000);
+    expect(p.calls.filter(c => c.url.endsWith(route))).toHaveLength(2);
+    for (const url of [merchantUrl, `${controlPlaneBaseUrl}/api/sdk/runtime-tokens`, 'https://api.openai.com/v1/agents/sessions'])
+      expect(p.calls.filter(c => c.method === 'POST' && c.url === url)).toHaveLength(1);
+    expect(report.runtimeCleanup).toBe('revoked');
+    expect(Object.values(report.cleanup)).toEqual(['deleted', 'deleted', 'deleted']);
+  });
+  it('bounds confirmation checks and retains the paid outcome for reconciliation', async () => {
+    const p = provider();
+    const route = `${p.org}/receipts/${receipt.receiptId}`;
+    p.records[route] = {
+      receipt: { ...receipt, status: 'provisional', settlementStatus: 'reconciliation_required' },
+    };
+    const wait = vi.fn(async () => undefined);
+    const report = await runPaidRequest(config, secrets, await path(), {
+      fetchImpl: p.fetchImpl, sessionBuilder: async () => ({}), wait,
+    });
+    expect(report.error).toBe('paid_request_receipt_not_confirmed');
+    expect(report.outcome).toMatchObject(outcome);
+    expect(wait).toHaveBeenCalledTimes(12);
+    expect(p.calls.filter(c => c.url.endsWith(route))).toHaveLength(13);
+    expect(p.calls.filter(c => c.method === 'POST' && c.url === merchantUrl)).toHaveLength(1);
+    expect(report.runtimeCleanup).toBe('revoked');
+  });
+  it.each(['wrong-agent', 'failed-fulfillment', 'refunded', 'unverifiable'])(
+    'does not poll or conceal %s evidence while waiting for confirmation',
+    async (condition) => {
+      const p = provider();
+      p.records[`${p.org}/receipts/${receipt.receiptId}`] = {
+        receipt: {
+          ...receipt, status: 'provisional', settlementStatus: 'reconciliation_required',
+          ...(condition === 'wrong-agent' ? { agentId: id(99) } : {}),
+          ...(condition === 'failed-fulfillment' ? { fulfillmentStatus: 'failed' } : {}),
+          ...(condition === 'refunded' ? { settlementStatus: 'refunded' } : {}),
+          ...(condition === 'unverifiable' ? { settlementStatus: 'unverifiable_settlement' } : {}),
+        },
+      };
+      const wait = vi.fn(async () => undefined);
+      const report = await runPaidRequest(config, secrets, await path(), {
+        fetchImpl: p.fetchImpl, sessionBuilder: async () => ({}), wait,
+      });
+      expect(report.state).toBe('failed');
+      expect(wait).not.toHaveBeenCalled();
+      expect(report.runtimeCleanup).toBe('revoked');
+    },
+  );
+  it('honors cancellation during confirmation polling and still cleans up', async () => {
+    const p = provider();
+    p.records[`${p.org}/receipts/${receipt.receiptId}`] = {
+      receipt: { ...receipt, status: 'provisional', settlementStatus: 'reconciliation_required' },
+    };
+    const controller = new AbortController();
+    const wait = vi.fn(async () => { controller.abort(); });
+    const report = await runPaidRequest(config, secrets, await path(), {
+      fetchImpl: p.fetchImpl, sessionBuilder: async () => ({}), wait, signal: controller.signal,
+    });
+    expect(report.error).toBe('paid_request_interrupted');
+    expect(wait).toHaveBeenCalledTimes(1);
+    expect(report.runtimeCleanup).toBe('revoked');
+    expect(Object.values(report.cleanup)).toEqual(['deleted', 'deleted', 'deleted']);
   });
   it('never exchanges credentials or launches execution when durable checkpointing fails', async () => {
     const p = provider();
@@ -513,7 +591,7 @@ describe('Paid request SDK execution', () => {
           'Bearer vault-placeholder',
         );
         expect(new Headers(init?.headers).get('x-402flow-sdk-version')).toBe(
-          '0.1.3',
+          sdkClientVersion,
         );
         if (String(input).endsWith('/payment-decisions')) {
           sent = JSON.parse(String(init?.body));
@@ -757,8 +835,10 @@ describe('Paid request failure and evidence boundaries', () => {
           },
         ],
       };
-      p.records[`${p.org}/payment-attempts`] = { paymentAttempts: [] };
-      p.records[`${p.org}/receipts`] = { receipts: [] };
+      // Staging lists are unpaginated and can exceed the normal 1 MiB limit.
+      const history = [{ paidRequestId: id(99), details: 'x'.repeat(1_048_576) }];
+      p.records[`${p.org}/payment-attempts`] = { paymentAttempts: history };
+      p.records[`${p.org}/receipts`] = { receipts: history };
       p.records[`${p.org}/policy-review-events/${id(16)}`] = {
         policyReviewEvent: {
           id: id(16),
@@ -779,7 +859,7 @@ describe('Paid request failure and evidence boundaries', () => {
         ).verified,
       ).toBe(true);
       p.records[`${p.org}/payment-attempts`] = {
-        paymentAttempts: [{ paidRequestId: receipt.paidRequestId }],
+        paymentAttempts: [...history, { paidRequestId: receipt.paidRequestId }],
       };
       await expect(
         verifyPaymentEvidence(
@@ -789,9 +869,28 @@ describe('Paid request failure and evidence boundaries', () => {
           p.runtime.id,
         ),
       ).rejects.toThrow('paid_request_denial_has_payment_evidence');
+      p.records[`${p.org}/payment-attempts`] = { paymentAttempts: history };
+      p.records[`${p.org}/receipts`] = {
+        receipts: [...history, { paidRequestId: receipt.paidRequestId }],
+      };
+      await expect(
+        verifyPaymentEvidence(cp, { ...config, expectedOutcome }, result, p.runtime.id),
+      ).rejects.toThrow('paid_request_denial_has_payment_evidence');
       expect(p.calls.every((c) => c.method === 'GET')).toBe(true);
     },
   );
+  it('bounds lifecycle history while retaining the smaller limit for detail reads', async () => {
+    const cp = new ControlPlaneClient(secrets.operatorToken, async () =>
+      json({ data: 'x'.repeat(16 * 1_048_576) }),
+    );
+    await expect(cp.request(`/organizations/${config.organizationId}/receipts`))
+      .rejects.toThrow('response_too_large');
+    const detail = new ControlPlaneClient(secrets.operatorToken, async () =>
+      json({ data: 'x'.repeat(1_048_576) }),
+    );
+    await expect(detail.request(`/organizations/${config.organizationId}/receipts/${id(1)}`))
+      .rejects.toThrow('response_too_large');
+  });
   it.each(['operation', 'runtime', 'network', 'audit', 'simulation'])(
     'rejects mismatched %s evidence',
     async (field) => {
@@ -860,11 +959,13 @@ describe('Paid request failure and evidence boundaries', () => {
       ),
     ).rejects.toThrow('paid_request_requires_explicit_testnet_payment_authorization');
   });
-  it.each(['standard', 'integration'] as const)(
+  it.each(['standard', 'integration', 'denied'] as const)(
     'uses the dedicated agent override with %s credentials during preflight',
     async (credentialSource) => {
       const p = provider();
-      const selectedAgent = 'openai-agents-test';
+      const selectedAgent = credentialSource === 'denied'
+        ? 'custom-denial-agent'
+        : 'openai-agents-test';
       p.records[p.agent] = {
         agent: {
           id: config.agentId,
@@ -878,18 +979,25 @@ describe('Paid request failure and evidence boundaries', () => {
       const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
       const file = await path();
       await writeFile(file, JSON.stringify(config));
-      await mainPaidRequest('paid-preflight', { config: file }, {
+      await mainPaidRequest('paid-preflight', {
+        config: file,
+        ...(credentialSource === 'denied' ? { 'agent-profile': 'denied' } : {}),
+      }, {
         X402FLOW_ORGANIZATION: identity.organization,
         X402FLOW_AGENT: 'test-agent',
-        OPENAI_AGENTS_AGENT: selectedAgent,
+        OPENAI_AGENTS_AGENT: 'openai-agents-test',
         OPERATOR_BEARER_TOKEN: secrets.operatorToken,
         ...(credentialSource === 'standard'
           ? {
               X402FLOW_BOOTSTRAP_KEY: secrets.bootstrapKey,
               X402FLOW_CONTROL_PLANE_BASE_URL: controlPlaneBaseUrl,
             }
-          : {
+          : credentialSource === 'integration' ? {
               OPENAI_AGENTS_BOOTSTRAP_KEY: secrets.bootstrapKey,
+              X402FLOW_CONTROL_PLANE_BASE_URL: 'http://127.0.0.1:3001',
+            } : {
+              OPENAI_AGENTS_DENIED_AGENT: selectedAgent,
+              OPENAI_AGENTS_DENIED_BOOTSTRAP_KEY: secrets.bootstrapKey,
               X402FLOW_CONTROL_PLANE_BASE_URL: 'http://127.0.0.1:3001',
             }),
       });
@@ -901,6 +1009,118 @@ describe('Paid request failure and evidence boundaries', () => {
       expect(p.calls.every((c) => c.method === 'GET')).toBe(true);
     },
   );
+  it.each(['success', 'denied'] as const)(
+    'exchanges only the %s profile key when both pairs are configured, without retrying a rejected exchange',
+    async (agentProfile) => {
+      const p = provider();
+      const selectedAgent = agentProfile === 'denied'
+        ? 'custom-denial-agent'
+        : 'openai-agents-test';
+      p.records[p.agent] = {
+        agent: {
+          id: config.agentId,
+          organizationId: config.organizationId,
+          externalId: selectedAgent,
+          status: 'enabled',
+          lifecycleStatus: 'active',
+        },
+      };
+      const exchangeHeaders: Array<string | null> = [];
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        if (String(input).endsWith('/sdk/runtime-tokens')) {
+          exchangeHeaders.push(new Headers(init?.headers).get('authorization'));
+          return json({}, 401);
+        }
+        return p.fetchImpl(input, init);
+      });
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const runConfig = { ...config, operationId: randomUUID() };
+      const file = await path();
+      await writeFile(file, JSON.stringify(runConfig));
+      const reportPath = join(process.cwd(), 'tmp/openai-agents-api/paid-requests', `${runConfig.operationId}.json`);
+      dirs.push(reportPath);
+      await main([
+        'paid-run', '--config', file, '--allow-testnet-payment',
+        ...(agentProfile === 'denied' ? ['--agent-profile', 'denied'] : []),
+      ], {
+        OPENAI_API_KEY: secrets.openaiKey,
+        X402FLOW_ORGANIZATION: identity.organization,
+        X402FLOW_AGENT: identity.agent,
+        X402FLOW_BOOTSTRAP_KEY: 'browser-only-secret',
+        X402FLOW_CONTROL_PLANE_BASE_URL: 'http://127.0.0.1:3001',
+        OPENAI_AGENTS_AGENT: 'openai-agents-test',
+        OPENAI_AGENTS_BOOTSTRAP_KEY: 'success-only-secret',
+        OPENAI_AGENTS_DENIED_AGENT: 'custom-denial-agent',
+        OPENAI_AGENTS_DENIED_BOOTSTRAP_KEY: 'denied-only-secret',
+        OPENAI_AGENTS_OPERATOR_TOKEN: secrets.operatorToken,
+      });
+      expect(exchangeHeaders).toEqual([
+        `Bearer ${agentProfile === 'denied' ? 'denied-only-secret' : 'success-only-secret'}`,
+      ]);
+      const saved = await readFile(reportPath, 'utf8');
+      expect(JSON.parse(saved)).toMatchObject({
+        state: 'failed', error: 'paid_request_runtime_exchange_failed',
+        checkpoint: { identity: { ...identity, agent: selectedAgent } },
+      });
+      expect(p.calls.filter((c) => c.method !== 'GET').map((c) => c.url)).toEqual([merchantUrl]);
+      expect(saved + JSON.stringify(log.mock.calls)).not.toMatch(
+        /browser-only-secret|success-only-secret|denied-only-secret/,
+      );
+    },
+  );
+  it.each([undefined, ''])(
+    'does not use another profile key when the denial key is %s',
+    async (deniedKey) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const file = await path();
+      await writeFile(file, JSON.stringify(config));
+      await expect(mainPaidRequest('paid-run', {
+        config: file, 'agent-profile': 'denied', 'allow-testnet-payment': true,
+      }, {
+        OPENAI_API_KEY: secrets.openaiKey,
+        X402FLOW_ORGANIZATION: identity.organization,
+        X402FLOW_AGENT: identity.agent,
+        X402FLOW_BOOTSTRAP_KEY: 'browser-only-secret',
+        OPENAI_AGENTS_AGENT: 'openai-agents-test',
+        OPENAI_AGENTS_BOOTSTRAP_KEY: secrets.bootstrapKey,
+        OPENAI_AGENTS_DENIED_AGENT: 'openai-agents-denied-test',
+        ...(deniedKey === undefined ? {} : { OPENAI_AGENTS_DENIED_BOOTSTRAP_KEY: deniedKey }),
+        OPENAI_AGENTS_OPERATOR_TOKEN: secrets.operatorToken,
+      })).rejects.toThrow('paid_request_missing_credentials');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+  it('requires the denial profile identity and rejects unknown profile names before network calls', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const env = {
+      X402FLOW_ORGANIZATION: identity.organization,
+      X402FLOW_AGENT: identity.agent,
+      OPENAI_AGENTS_AGENT: 'openai-agents-test',
+      OPENAI_AGENTS_DENIED_BOOTSTRAP_KEY: secrets.bootstrapKey,
+      OPENAI_AGENTS_OPERATOR_TOKEN: secrets.operatorToken,
+    };
+    await expect(main(['paid-preflight', '--agent-profile', 'denied'], env))
+      .rejects.toThrow('paid_request_requires_sdk_identity');
+    await expect(main(['paid-plan', '--agent-profile', 'typo'], env))
+      .rejects.toThrow('paid_request_invalid_agent_profile');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+  it('reports the selected denial profile without exposing either credential', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    await main(['paid-plan', '--agent-profile', 'denied'], {
+      OPENAI_AGENTS_AGENT: 'openai-agents-test',
+      OPENAI_AGENTS_BOOTSTRAP_KEY: 'success-only-secret',
+      OPENAI_AGENTS_DENIED_AGENT: 'custom-denial-agent',
+      OPENAI_AGENTS_DENIED_BOOTSTRAP_KEY: 'denied-only-secret',
+    });
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+      agentProfile: 'denied',
+      configured: { agent: true, bootstrapKey: true, bootstrapSource: 'denied_integration_override' },
+    });
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/success-only-secret|denied-only-secret/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
   it('rejects the browser agent in config when the dedicated agent is selected', async () => {
     const p = provider();
     vi.spyOn(globalThis, 'fetch').mockImplementation(p.fetchImpl);

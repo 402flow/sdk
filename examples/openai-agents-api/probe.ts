@@ -1,4 +1,5 @@
-import { hostedSdk } from './hosted-sdk.js';
+import { hostedSdk, sdkVersionSchema } from './hosted-sdk.js';
+import { sdkClientVersion } from '@402flow/sdk';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { isIP } from 'node:net';
@@ -79,7 +80,7 @@ export const reportSchema = z
     schemaVersion: z.literal(1),
     versions: z
       .object({
-        sdk: z.enum(['0.1.2', '0.1.3']),
+        sdk: sdkVersionSchema,
         openAiBeta: z.literal('agents=v1'),
       })
       .strict(),
@@ -341,7 +342,7 @@ export async function buildSession(
         {
           type: 'inline',
           path: '/workspace/probe-config.json',
-          data: Buffer.from(JSON.stringify({ ...config, canaryHash })).toString(
+          data: Buffer.from(JSON.stringify({ ...config, canaryHash, sdkVersion: artifact.version })).toString(
             'base64',
           ),
         },
@@ -521,7 +522,7 @@ export async function runProbe(
   const timeoutMs = options.timeoutMs ?? 300_000;
   const report: ProbeReport = {
     schemaVersion: 1,
-    versions: { sdk: '0.1.3', openAiBeta: 'agents=v1' },
+    versions: { sdk: sdkClientVersion, openAiBeta: 'agents=v1' },
     config,
     startedAt: new Date().toISOString(),
     state: 'running',

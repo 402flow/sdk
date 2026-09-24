@@ -6,8 +6,11 @@ For the package front door, start with the root [README](../README.md).
 For model-host details, see [evaluation-harness.md](evaluation-harness.md).
 For the hosted Agents API capability probe and durable testnet launcher, see
 [the reference integration](../examples/openai-agents-api/README.md). Stage 1
-passed hosted validation with the local 0.1.3 artifact; the paid-request flow has local test
-coverage, with authenticated hosted execution and testnet validation pending.
+passed hosted validation with the local 0.1.3 artifact. One authenticated hosted
+Base Sepolia purchase against AWS staging is confirmed by read-only receipt,
+audit, and ledger reconciliation. A separate hosted policy-review rejection
+passed with no payment attempt, receipt, or ledger entry. Broader recovery checks
+remain deferred.
 For scenario packs and first-party versus third-party evaluation paths, see [harness-scenarios.md](harness-scenarios.md).
 
 ## Install

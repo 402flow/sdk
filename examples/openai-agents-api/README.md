@@ -2,7 +2,8 @@
 
 Stage 1 checks hosted execution using an **inert, random canary** and makes no
 402flow payment. The paid-request example adds a single-agent testnet flow with durable recovery
-checkpoints; its live validation is still pending.
+checkpoints. One real OpenAI-hosted purchase against AWS staging is confirmed,
+and the separate policy-review rejection passed. Broader recovery checks remain deferred.
 The launcher, hosted probe, and caller recovery belong here. Authorization,
 policy, payment execution, receipts, spend controls, and audit remain in the
 402flow control plane. The design and roadmap remain in that repository:
@@ -117,7 +118,8 @@ prompts, or command arguments. See [OpenAI vault delivery](https://developers.op
 The root and exactly two distinct child agents each run the supplied command
 once. Every command checks:
 
-- Node supports the SDK, and the supplied local `@402flow/sdk@0.1.3` tarball loads.
+- Node supports the SDK, and the supplied local `@402flow/sdk` tarball loads
+  with the exact version recorded by the launcher.
 - The real SDK's `lookupReceipt` forwards the placeholder and SDK version header
   to a **local intercepted transport**; it makes no authenticated 402flow request.
 - The sandbox value differs from the real canary, while the receiver observes
@@ -230,29 +232,36 @@ and receipt evidence are `tmp/scenario-summary.txt` and
 This campaign used `gpt-6-luna`, the SDK's local Responses harness, SDK-local
 credentials, and the local 0.1.3 control plane at `http://127.0.0.1:3001`, against
 the hosted staging merchant. It establishes SDK paid-flow compatibility; the
-hosted Agents API paid-request proof still requires the control-plane rollout.
-Nothing was published or deployed, and changes remain uncommitted.
+hosted Agents API proof is recorded separately below. That release campaign
+did not publish or deploy anything. The operator subsequently published and
+deployed the 0.1.3 control-plane dependency before the hosted purchase.
 
 ## Paid request example
 
-The paid-request example is implemented and tested locally with SDK 0.1.3. **Hosted paid execution is
-pending.** Stage 1 passed again with the local 0.1.3 artifact; this does not prove
-real hosted runtime-token acceptance or payment. Current local checks passed 198 core tests and 17 adapter tests, lint,
-type checks, and both package dry runs. Both hosted stages now receive
-`dist/402flow-sdk-0.1.3.tgz`, packed
+The paid-request example uses the SDK version in this checkout's `package.json`.
+**One hosted AWS testnet purchase using SDK 0.1.3 is confirmed**, with matching
+receipt, audit lineage, and ledger evidence. The
+original command stopped on an early confirmation check; its later read-only
+reconciliation passed. See the evidence below. Local tests cover delayed
+confirmation, bounded polling, cancellation, and immediate rejection of invalid
+evidence. Both hosted stages receive
+`dist/402flow-sdk-<version>.tgz`, packed
 from this checkout, plus pinned `zod@3.25.76` and `undici@6.28.1`. No registry
 SDK fallback or publication occurs. Session metadata records the artifact's
 SHA-256; the paid-request launcher also saves it in the report. Local tests extract the supplied
 tarball and execute the rewritten hosted modules against a fake control plane.
 The payload uses the documented [hosted files and setup commands](https://developers.openai.com/api/docs/guides/agents-api/environments/openai-hosted).
 
-The target API must accept **0.1.3**. Current `agent-pay` source consumes the local
-0.1.3 tarball, but the deployed staging API (task revision 49) still accepts only
-0.1.2; its unchanged image was verified again on September 24. The operator
-selected normal npm publication and a control-plane dependency update for the
-rollout; the earlier local image candidate is superseded and has not been pushed
-or deployed. The API version gate accepts only its installed SDK version, so an
-API rollout using 0.1.3 also stops accepting 0.1.2.
+The artifact filename, report metadata, CLI plans, and sandbox version checks
+derive from the SDK's exported version, so a package bump needs no separate
+example version edits. Older saved report versions remain valid for cleanup
+and reconciliation; their recorded versions are preserved.
+
+The target API must accept **the version being run**. The current checkout is
+0.1.4; live evidence below used 0.1.3. After the operator's rollout, staging task
+revision 50 accepted the example's 0.1.3 credential exchange and hosted payment.
+The earlier revision-49/local-image proposal is superseded. The API version gate
+accepts only its installed SDK version.
 A failed runtime-token exchange never launches an authenticated agent or proceeds
 to payment.
 
@@ -271,6 +280,71 @@ Extra commands or subagents fail attribution checks. Policy, approval, payment,
 receipts, and audit remain in the control plane. `AgentHarness` memory and
 sandbox files are not durable stores.
 
+### Hosted purchase evidence, 2026-09-24 UTC
+
+The operator authorized one Base Sepolia purchase, at most 0.001 test USDC plus
+testnet fees and OpenAI usage, against the hosted AWS environment. The root
+agent used `gpt-6-luna`, SDK 0.1.3, and a vault-delivered runtime credential for
+`acme-labs` / `openai-agents-test`. It returned SDK `success`, merchant HTTP 200,
+and a matching SDK receipt lookup.
+
+- Operation: `5efec117-8b4b-483e-b788-3ddc4bb77d30`.
+- Paid request: `69ca7791-d255-4903-b46d-43c9748c4dfd`.
+- Receipt: `1547fd3c-d557-46cd-bf54-fe9f785fe011`.
+- Merchant amount: **0.001000 Base Sepolia test USDC**, with exactly one matching
+  ledger debit. Testnet fees and OpenAI charges are separate.
+
+Fulfillment completed at 01:53:09 UTC. The command stopped with
+`paid_request_receipt_not_confirmed` before the chain observer confirmed it at
+01:53:38 UTC. Read-only reconciliation at 01:55 UTC reran the receipt/audit
+assertions successfully and verified the matching debit. No payment was retried.
+The original failed report remains unchanged at
+`tmp/openai-agents-api/paid-requests/5efec117-8b4b-483e-b788-3ddc4bb77d30.json`;
+the separate reconciliation is the same path with `-reconciliation.json`.
+The runtime session is revoked and the OpenAI session, credential, and vault
+are deleted. Command/turn attribution and runtime/credential audit lineage match.
+
+The launcher now permits up to twelve further read-only checks at five-second
+intervals for a validated provisional receipt, within the existing five-minute
+run deadline. It still requires confirmed settlement. This adjustment is tested
+locally; the live purchase was not repeated to test it. The separate rejection
+run is recorded below; replay, concurrency, and subagent payment campaigns remain deferred.
+
+### Hosted policy-review rejection, 2026-09-24 UTC
+
+The separately authorized run used `openai-agents-denied-test`, its own bootstrap
+credential, and `gpt-6-luna`. Read-only preflight verified the agent's per-request
+cap of **999 minor units**, below the merchant's 1000-unit Base Sepolia request.
+Its separate daily budget remained 100000. No policy was changed.
+
+The hosted command passed at 02:05:55 UTC, returning SDK `denied` with
+`policy_review_required`. Provider command/turn attribution and the control-plane
+runtime-session/credential audit lineage matched.
+
+- Operation: `7d9577ab-966a-4a76-88d6-be72d313ddb2`.
+- Paid request: `cddcad5a-b4ca-4e45-9ab2-fbe8ccaac192`, state `denied`.
+- Policy review: `bac7cf6b-9af3-4a6b-ab83-d14c363778b2`, left **open**.
+- **Zero payment attempts, receipts, or ledger entries** for this operation.
+  OpenAI usage is separate; no merchant payment occurred.
+
+Runtime session `8b248f7f-4a99-47b2-b344-c7fd922ea392` is revoked. The OpenAI
+session, vault credential, and vault are deleted. Nothing was retried or approved.
+The passing report is `tmp/openai-agents-api/paid-requests/7d9577ab-966a-4a76-88d6-be72d313ddb2.json`;
+the additional read-only ledger/review verification uses the same path with
+`-verification.json`.
+
+Before launching, the example's unpaginated operator lifecycle-list reads were
+raised from 1 MiB to a bounded 16 MiB; staging's lists exceeded 3 MiB. Other reads
+retain the 1 MiB bound. Regression tests verify that payment evidence after a large
+history still fails denial validation and oversized responses still fail closed.
+
+This run and its local checks used an isolated SDK **0.1.3** build matching staging,
+with the current example changes: 213 core tests and 17 adapter tests passed,
+including lint and type checks. The working checkout's separate 0.1.4 manifest
+bump was preserved. The example's version handling was subsequently updated to
+follow the package version and tested locally on 0.1.4. The earlier hosted run
+does not establish live 0.1.4 compatibility. No publication or deployment occurred.
+
 ### Setup and read-only preflight
 
 Use a dedicated staging agent (`openai-agents-test`) and its bootstrap credential, with no concurrent
@@ -278,13 +352,17 @@ exchanges for that agent during a run. The launcher correlates the runtime sessi
 using before/after session lists; it never decodes the opaque token.
 Ambiguous correlation fails closed and requires operator inspection.
 
-Set these in SDK-local `.env` or `.env.local`, alongside the existing OpenAI key:
+The root [`.env.example`](../../.env.example) includes these settings as comments.
+Copy them into SDK-local `.env` or `.env.local`, then uncomment and fill them in
+alongside the existing OpenAI key:
 
 ```ini
 X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
 X402FLOW_ORGANIZATION="acme-labs"
 OPENAI_AGENTS_AGENT="openai-agents-test"
 OPENAI_AGENTS_BOOTSTRAP_KEY="..."
+OPENAI_AGENTS_DENIED_AGENT="openai-agents-denied-test"
+OPENAI_AGENTS_DENIED_BOOTSTRAP_KEY="..."
 OPENAI_AGENTS_OPERATOR_TOKEN="..."
 ```
 
@@ -296,19 +374,38 @@ to match the control-plane records selected by the JSON config's UUIDs. Setting
 this variable does not create the agent or change which agent owns a key; use
 the dedicated agent's bootstrap credential.
 
+The default `success` profile selects `OPENAI_AGENTS_AGENT` and
+`OPENAI_AGENTS_BOOTSTRAP_KEY`. Pass `--agent-profile denied` to select
+`OPENAI_AGENTS_DENIED_AGENT` and `OPENAI_AGENTS_DENIED_BOOTSTRAP_KEY` together,
+alongside that agent's JSON configuration. Both pairs can stay in `.env`; the
+operator token can be shared if it has the required permissions for both agents.
+Omit the denial settings if you only intend to run the success case.
+
+The denial profile never falls back to the success agent or SDK credentials.
+An explicitly empty selected key fails; a rejected exchange never retries
+another credential. The profile selects credentials only: it does not change
+policy or infer the expected outcome. The JSON config's UUIDs must still match
+the selected identity. Existing single-key commands keep their current behavior
+when no profile flag is supplied.
+
 The operator token needs access to setup/lifecycle records and permission to
 revoke the selected agent's runtime sessions. Operator and bootstrap credentials
-stay local; only the runtime token goes to the vault. Standard `X402FLOW_*` values
-are accepted only with the explicit staging URL and identity matching the
-control-plane records. A localhost URL fails before any network call. Commented
-env entries are inactive. To retain active localhost defaults, supply a staging
-`OPENAI_AGENTS_BOOTSTRAP_KEY` override and, optionally,
-`OPENAI_AGENTS_OPERATOR_TOKEN`; these take precedence over the standard
-key/token variables. Never put secrets in command arguments or JSON configuration.
+stay local; only the runtime token goes to the vault. The launcher creates that
+token; no hosted runtime-token environment setting is needed. When falling back
+to `X402FLOW_BOOTSTRAP_KEY`, the example requires the explicit staging URL and
+identity matching the control-plane records; a localhost URL fails before any
+network call. With either dedicated staging bootstrap key, other
+examples can retain localhost defaults: the hosted purchase always uses the fixed
+staging API. `OPENAI_AGENTS_OPERATOR_TOKEN` overrides `OPERATOR_BEARER_TOKEN`.
+Commented env entries are inactive. Never put secrets in command arguments or
+JSON configuration.
 
 Copy [paid-request.config.example.json](paid-request.config.example.json) to ignored `tmp/`.
 Replace its placeholder organization, agent, per-request policy (`requestPolicyId`),
-and daily budget policy (`budgetPolicyId`) UUIDs. If you have
+and daily budget policy (`budgetPolicyId`) UUIDs. This JSON file also selects the
+paid run's `model`, `expectedOutcome`, `maxAmountMinor`, and `maxBudgetAmountMinor`;
+these are not environment variables. `OPENAI_AGENTS_MODEL` and
+`OPENAI_AGENTS_CANARY_URL` apply only to the capability probe. If you have
 the bootstrap credential UUID, optionally add `credentialId` to pin it. Otherwise,
 the control plane authenticates the existing key and the launcher validates and
 records the issued session's credential UUID before vault delivery; no replacement
@@ -367,6 +464,15 @@ unapproved. There is no need to exhaust or reset the success agent's budget.
 Avoid concurrent credential exchanges for each agent; stop and reconcile any
 unexpected outcome before continuing.
 
+With both agent/key pairs saved, check the denial setup:
+
+```bash
+npm run example:openai-agents-api -- paid-preflight \
+  --agent-profile denied --config tmp/paid-request-denied.json
+```
+
+Use the same profile flag and config for a separately authorized `paid-run`.
+
 Reports are reserved at `tmp/openai-agents-api/paid-requests/<operationId>.json` before
 work starts. An existing report prevents another run. Success requires HTTP
 200, SDK receipt lookup, matching identities and request/attempt/receipt IDs,
@@ -374,6 +480,13 @@ amount/network, confirmed settlement, and runtime-session/credential audit
 lineage. Denied/review cases require the corresponding audit/review records and
 no payment attempt or receipt. Reports save IDs and a merchant-body hash, without
 raw merchant content or provider transcripts.
+
+A fulfilled provisional receipt can precede chain confirmation. The launcher
+rechecks that same operation at five-second intervals, at most twelve times,
+while honoring the overall run deadline. Only a provisional receipt awaiting
+reconciliation is eligible; identity, amount, fulfillment, or audit mismatches
+still stop immediately. Exhausted confirmation checks preserve the paid outcome
+and fail for read-only reconciliation. They never repeat a payment.
 
 ### Recovery
 

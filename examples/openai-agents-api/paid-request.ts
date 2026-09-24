@@ -1,9 +1,9 @@
-import { hostedSdk } from './hosted-sdk.js';
+import { hostedSdk, sdkVersionSchema } from './hosted-sdk.js';
 import { open, readFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
-import { AgentPayClient } from '@402flow/sdk';
+import { AgentPayClient, sdkClientVersion } from '@402flow/sdk';
 import {
   checkAccess,
   cleanupResources,
@@ -37,7 +37,7 @@ export const paidRequestReportSchema = z
   .object({
     workflow: z.literal('paid-request'),
     schemaVersion: z.literal(1),
-    sdkVersion: z.literal('0.1.3'),
+    sdkVersion: sdkVersionSchema,
     sdkArtifactSha256: z
       .string()
       .regex(/^[a-f0-9]{64}$/)
@@ -276,7 +276,7 @@ export async function runPaidRequest(
   const report: PaidRequestReport = {
     workflow: 'paid-request',
     schemaVersion: 1,
-    sdkVersion: '0.1.3',
+    sdkVersion: sdkClientVersion,
     config,
     startedAt: new Date().toISOString(),
     state: 'running',
@@ -439,13 +439,26 @@ export async function runPaidRequest(
       await collectPaidRequestOutcome(api, sessionId, options.wait),
     );
     await persist(path, report);
-    report.controlPlaneEvidence = await verifyPaymentEvidence(
-      cp,
-      config,
-      report.outcome!,
-      session.id,
-      session.credentialId,
-    );
+    for (let confirmationCheck = 0; ; confirmationCheck++) {
+      controller.signal.throwIfAborted();
+      try {
+        report.controlPlaneEvidence = await verifyPaymentEvidence(
+          cp, config, report.outcome!, session.id, session.credentialId,
+        );
+        break;
+      } catch (error) {
+        if (
+          !(error instanceof ProbeError) ||
+          error.code !== 'paid_request_receipt_confirmation_pending'
+        )
+          throw error;
+        if (confirmationCheck >= 12)
+          throw new ProbeError('paid_request_receipt_not_confirmed');
+        // Re-read the same operation only; never exchange, prepare, or execute again.
+        if (options.wait) await options.wait(5000);
+        else await delay(5000, undefined, { signal: controller.signal });
+      }
+    }
     report.state = 'passed';
   } catch (error) {
     report.state = 'failed';

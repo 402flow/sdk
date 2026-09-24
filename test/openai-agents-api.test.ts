@@ -183,7 +183,7 @@ describe('hosted probe', () => {
       return json({ ok: true });
     });
     const output = await runSandboxProbe(
-      { ...config, canaryHash },
+      { ...config, canaryHash, sdkVersion: sdk.sdkClientVersion },
       'root',
       'vault-placeholder',
       fetchImpl,
@@ -198,7 +198,7 @@ describe('hosted probe', () => {
 
   it('fails visible secrets, wrong substitution, wrong merchant network, and HTTP responses from blocked hosts', async () => {
     const output = await runSandboxProbe(
-      { ...config, canaryHash: hashAuthorization('visible') },
+      { ...config, canaryHash: hashAuthorization('visible'), sdkVersion: sdk.sdkClientVersion },
       'child-a',
       'visible',
       async () => json({ authorizationSha256: emptyHash }, 403),
@@ -212,6 +212,17 @@ describe('hosted probe', () => {
       apiReachable: false,
       blockedDestinationRejected: false,
     });
+  });
+
+  it('rejects an SDK version that differs from the launcher-supplied artifact version', async () => {
+    const output = await runSandboxProbe(
+      { ...config, canaryHash: hashAuthorization('inert'), sdkVersion: '999.0.0' },
+      'root',
+      'vault-placeholder',
+      async () => json({}, 403),
+      () => Promise.resolve(sdk),
+    );
+    expect(output.checks.sdkPlaceholderHeader).toBe(false);
   });
 });
 
@@ -640,11 +651,28 @@ describe('launcher configuration', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     await main(['plan'], { OPENAI_API_KEY: 'secret' });
     expect(log).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(log.mock.calls[0]?.[0])).sdk).toBe(sdk.sdkClientVersion);
     expect(String(log.mock.calls[0]?.[0])).not.toContain('secret');
     await expect(main(['run'], { OPENAI_API_KEY: 'secret' })).rejects.toThrow(
       'run_requires_model_and_approved_canary_url',
     );
   });
+  it.each(['0.1.2', '0.1.3'])(
+    'can still clean up a saved capability report from SDK %s',
+    async (version) => {
+      const p = provider();
+      const path = await reportPath();
+      const report = await runProbe(config, 'key', path, {
+        fetchImpl: p.fetchImpl, sessionBuilder, wait: noWait,
+      });
+      expect(report.versions.sdk).toBe(sdk.sdkClientVersion);
+      report.versions.sdk = version;
+      await writeReport(path, report);
+      expect((await cleanupReport(path, p.api)).versions.sdk).toBe(version);
+      expect(reportSchema.safeParse({ ...report, versions: { ...report.versions, sdk: '../other' } }).success)
+        .toBe(false);
+    },
+  );
 });
 
 describe('compiled hosted payload', () => {
@@ -666,7 +694,7 @@ describe('compiled hosted payload', () => {
       import { tmpdir } from 'node:os';
       import { join, resolve } from 'node:path';
       import { pathToFileURL } from 'node:url';
-      import { AgentPayClient } from '@402flow/sdk';
+      import { AgentPayClient, sdkClientVersion } from '@402flow/sdk';
       import { buildPaidRequestSession } from './examples/openai-agents-api/dist/paid-request.js';
       import { makeCheckpoint, controlPlaneBaseUrl, requestBody, paymentAsset, merchantUrl } from './examples/openai-agents-api/dist/paid-request-contract.js';
       const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
@@ -680,7 +708,7 @@ describe('compiled hosted payload', () => {
       try {
         for(const file of payload.environment.files)await writeFile(join(directory,file.path.replace('/workspace/','')),Buffer.from(file.data,'base64'));
         const sdkDirectory=join(directory,'node_modules/@402flow/sdk');await mkdir(sdkDirectory,{recursive:true});
-        execFileSync('tar',['-xzf',join(directory,'402flow-sdk-0.1.3.tgz'),'-C',sdkDirectory,'--strip-components=1']);
+        execFileSync('tar',['-xzf',join(directory,'402flow-sdk-'+sdkClientVersion+'.tgz'),'-C',sdkDirectory,'--strip-components=1']);
         for(const name of ['zod','undici'])await symlink(resolve('node_modules',name),join(directory,'node_modules',name));
         const { executeCheckpoint }=await import(pathToFileURL(join(directory,'execute-request.mjs')).href);
         let version;let calls=0;
@@ -697,7 +725,7 @@ describe('compiled hosted payload', () => {
       { encoding: 'utf8' },
     );
     expect(JSON.parse(output)).toMatchObject({
-      version: '0.1.3',
+      version: sdk.sdkClientVersion,
       calls: 1,
       result: { kind: 'denied' },
       domains: ['api-staging.402flow.ai'],
@@ -726,6 +754,16 @@ describe('compiled hosted payload', () => {
       'undici@6.28.1',
       'zod@3.25.76',
     ]);
+    const files = payload.environment.files as Array<{ path: string; data: string }>;
+    const artifactPath = `/workspace/402flow-sdk-${sdk.sdkClientVersion}.tgz`;
+    expect(files.filter(file => file.path.endsWith('.tgz')).map(file => file.path))
+      .toEqual([artifactPath]);
+    expect(payload.environment.setup_commands[0].command).toContain(`tar -xzf ${artifactPath} `);
+    const sandboxConfig = JSON.parse(Buffer.from(
+      files.find(file => file.path === '/workspace/probe-config.json')!.data,
+      'base64',
+    ).toString());
+    expect(sandboxConfig.sdkVersion).toBe(sdk.sdkClientVersion);
     expect(payload.environment.network.allowed_domains).toEqual([
       'canary.example.net',
       'api-staging.402flow.ai',

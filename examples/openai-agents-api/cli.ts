@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { sdkClientVersion } from '@402flow/sdk';
 import {
   checkAccess,
   cleanupReport,
@@ -25,13 +26,14 @@ export async function main(
       report: { type: 'string' },
       config: { type: 'string' },
       'allow-testnet-payment': { type: 'boolean' },
+      'agent-profile': { type: 'string' },
       help: { type: 'boolean' },
     },
   });
   const command = positionals[0] ?? 'plan';
   if (values.help) {
     console.log(
-      'Usage: npm run example:openai-agents-api -- plan|preflight|run|cleanup [--model ID] [--canary-url HTTPS_URL] [--report PATH]; paid-plan|paid-preflight|paid-run --config PATH [--allow-testnet-payment]; paid-cleanup|paid-reconcile --report PATH',
+      'Usage: npm run example:openai-agents-api -- plan|preflight|run|cleanup [--model ID] [--canary-url HTTPS_URL] [--report PATH]; paid-plan|paid-preflight|paid-run --config PATH [--agent-profile success|denied] [--allow-testnet-payment]; paid-cleanup|paid-reconcile --report PATH',
     );
     return;
   }
@@ -42,6 +44,7 @@ export async function main(
   }
   if (
     positionals.length > 1 ||
+    values['agent-profile'] !== undefined ||
     !['plan', 'preflight', 'run', 'cleanup'].includes(command)
   )
     throw new ProbeError('invalid_command');
@@ -55,7 +58,7 @@ export async function main(
           stage: 1,
           networkCalls: 0,
           paidRequests: 0,
-          sdk: '0.1.3',
+          sdk: sdkClientVersion,
           configured: {
             apiKey: Boolean(env.OPENAI_API_KEY),
             model: Boolean(model),

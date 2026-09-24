@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { sdkClientVersion } from '@402flow/sdk';
 import { ProbeError } from './transport.js';
 import { withReportLock, writeReport } from './probe.js';
 import {
@@ -29,26 +30,39 @@ export async function mainPaidRequest(
     config?: string;
     report?: string;
     'allow-testnet-payment'?: boolean;
+    'agent-profile'?: string;
   },
   env: NodeJS.ProcessEnv,
 ) {
+  const agentProfile = values['agent-profile'] ?? 'success';
+  if (!['success', 'denied'].includes(agentProfile))
+    throw new ProbeError('paid_request_invalid_agent_profile');
+  const useDeniedAgent = agentProfile === 'denied';
+  const configuredAgent = useDeniedAgent
+    ? env.OPENAI_AGENTS_DENIED_AGENT
+    : env.OPENAI_AGENTS_AGENT ?? env.X402FLOW_AGENT;
+  const integrationBootstrapKey = useDeniedAgent
+    ? env.OPENAI_AGENTS_DENIED_BOOTSTRAP_KEY
+    : env.OPENAI_AGENTS_BOOTSTRAP_KEY;
   const secrets = {
     openaiKey: env.OPENAI_API_KEY ?? '',
-    bootstrapKey: env.OPENAI_AGENTS_BOOTSTRAP_KEY ?? env.X402FLOW_BOOTSTRAP_KEY ?? '',
+    bootstrapKey:
+      integrationBootstrapKey ??
+      (useDeniedAgent ? '' : env.X402FLOW_BOOTSTRAP_KEY ?? ''),
     operatorToken:
       env.OPENAI_AGENTS_OPERATOR_TOKEN ??
       env.OPERATOR_BEARER_TOKEN ??
       '',
   };
   const useStandardConfig =
-    !env.OPENAI_AGENTS_BOOTSTRAP_KEY &&
+    !useDeniedAgent &&
+    !integrationBootstrapKey &&
     Boolean(env.X402FLOW_BOOTSTRAP_KEY);
   const stagingTarget =
     env.X402FLOW_CONTROL_PLANE_BASE_URL?.replace(/\/$/, '') ===
     controlPlaneBaseUrl;
-  const configuredAgent = env.OPENAI_AGENTS_AGENT ?? env.X402FLOW_AGENT;
   const requireConfiguredIdentity =
-    useStandardConfig || env.OPENAI_AGENTS_AGENT !== undefined;
+    useDeniedAgent || useStandardConfig || env.OPENAI_AGENTS_AGENT !== undefined;
   const expectedIdentity =
     requireConfiguredIdentity && env.X402FLOW_ORGANIZATION && configuredAgent
       ? { organization: env.X402FLOW_ORGANIZATION, agent: configuredAgent }
@@ -60,14 +74,18 @@ export async function mainPaidRequest(
           workflow: 'paid-request',
           networkCalls: 0,
           paidRequests: 0,
-          sdk: '0.1.3',
+          sdk: sdkClientVersion,
+          agentProfile,
           configured: {
+            agent: Boolean(configuredAgent),
             openaiKey: Boolean(secrets.openaiKey),
             bootstrapKey: Boolean(secrets.bootstrapKey),
             operatorToken: Boolean(secrets.operatorToken),
-            bootstrapSource: env.OPENAI_AGENTS_BOOTSTRAP_KEY
-              ? 'integration_override'
-              : env.X402FLOW_BOOTSTRAP_KEY
+            bootstrapSource: integrationBootstrapKey !== undefined
+              ? useDeniedAgent
+                ? 'denied_integration_override'
+                : 'integration_override'
+              : useStandardConfig
                 ? 'sdk_configuration'
                 : 'missing',
             stagingTarget,
