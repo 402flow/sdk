@@ -218,40 +218,14 @@ describe('AgentPayClient entrypoint behaviors', () => {
   });
 
   it('exchanges a bootstrap key for a runtime token and reuses it for subsequent calls', async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockImplementationOnce(
-        async () =>
-          new Response(
-            JSON.stringify({
-              token: 'runtime-token',
-              expiresAt: '2099-03-14T20:15:00.000Z',
-            }),
-            {
-              status: 200,
-              headers: { 'content-type': 'application/json' },
-            },
-          ),
-      )
-      .mockImplementationOnce(
-        async () =>
-          new Response(
-            JSON.stringify({
-              receipt: {
-                ...baseReceipt,
-                receiptId: '00000000-0000-0000-0000-000000000020',
-                paidRequestId: '00000000-0000-0000-0000-000000000120',
-                paymentAttemptId: '00000000-0000-0000-0000-000000000220',
-                requestUrl: 'https://merchant.example.com/data',
-                requestMethod: 'GET',
-              },
-            }),
-            {
-              status: 200,
-              headers: { 'content-type': 'application/json' },
-            },
-          ),
-      );
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).endsWith('/sdk/runtime-tokens')) {
+        return Response.json({
+          token: 'runtime-token', expiresAt: '2099-03-14T20:15:00.000Z',
+        });
+      }
+      return Response.json({ receipt: baseReceipt });
+    });
 
     const client = new AgentPayClient({
       controlPlaneBaseUrl: 'http://localhost:3001',
@@ -260,17 +234,81 @@ describe('AgentPayClient entrypoint behaviors', () => {
       fetch: fetchMock,
     });
 
-    await client.lookupReceipt('00000000-0000-0000-0000-000000000020');
+    await client.lookupReceipt(baseReceipt.receiptId);
+    await client.lookupReceipt(baseReceipt.receiptId);
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
       Authorization: 'Bearer bootstrap-key',
       [sdkClientVersionHeaderName]: sdkClientVersion,
     });
-    expect(fetchMock.mock.calls[1]?.[1]?.headers).toMatchObject({
-      Authorization: 'Bearer runtime-token',
-      [sdkClientVersionHeaderName]: sdkClientVersion,
+    for (const [, init] of fetchMock.mock.calls.slice(1)) {
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer runtime-token',
+        [sdkClientVersionHeaderName]: sdkClientVersion,
+      });
+    }
+  });
+
+  it('shares one pending runtime-token exchange across concurrent lookups', async () => {
+    let resolveExchange!: (response: Response) => void;
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => {
+        resolveExchange = resolve;
+      }))
+      .mockImplementation(async () => Response.json({ receipt: baseReceipt }));
+    const client = new AgentPayClient({
+      controlPlaneBaseUrl: 'http://localhost:3001',
+      auth: { type: 'bootstrapKey', bootstrapKey: 'bootstrap-key' },
+      ...baseContext,
+      fetch: fetchMock,
     });
+    const first = client.lookupReceipt(baseReceipt.receiptId);
+    const second = client.lookupReceipt(baseReceipt.receiptId);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/sdk\/runtime-tokens$/);
+    resolveExchange(Response.json({ token: 'shared-token', expiresAt: '2099-01-01T00:00:00.000Z' }));
+    await Promise.all([first, second]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchMock.mock.calls.slice(1)) {
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer shared-token');
+    }
+  });
+
+  it('refreshes a cached runtime token at the thirty-second expiry margin', async () => {
+    const start = Date.parse('2026-09-24T12:00:00.000Z');
+    const now = vi.spyOn(Date, 'now').mockReturnValue(start);
+    let exchanges = 0;
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).endsWith('/sdk/runtime-tokens')) {
+        exchanges++;
+        return Response.json({
+          token: `runtime-token-${exchanges}`,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        });
+      }
+      return Response.json({ receipt: baseReceipt });
+    });
+    try {
+      const client = new AgentPayClient({
+        controlPlaneBaseUrl: 'http://localhost:3001',
+        auth: { type: 'bootstrapKey', bootstrapKey: 'bootstrap-key' },
+        ...baseContext,
+        fetch: fetchMock,
+      });
+      await client.lookupReceipt(baseReceipt.receiptId);
+      now.mockReturnValue(start + 29_999);
+      await client.lookupReceipt(baseReceipt.receiptId);
+      expect(exchanges).toBe(1);
+      now.mockReturnValue(start + 30_000);
+      await client.lookupReceipt(baseReceipt.receiptId);
+      expect(exchanges).toBe(2);
+      const lookups = fetchMock.mock.calls.filter(([url]) => String(url).includes('/receipts/'));
+      expect(lookups.map(([, init]) => new Headers(init?.headers).get('authorization')))
+        .toEqual(['Bearer runtime-token-1', 'Bearer runtime-token-1', 'Bearer runtime-token-2']);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('parses receipt lookups that use Solana finality levels', async () => {

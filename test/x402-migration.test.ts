@@ -80,6 +80,38 @@ describe('older x402 merchant compatibility', () => {
     });
   });
 
+  it('uses header challenge terms when a valid JSON body advertises conflicting terms', async () => {
+    const header = {
+      x402Version: 2,
+      accepts: [{
+        scheme: 'exact', network: 'eip155:84532', amount: '1000',
+        asset: 'USDC', payTo: 'header-merchant',
+      }],
+    };
+    const body = {
+      x402Version: 1,
+      accepts: [{
+        scheme: 'exact', network: 'base', maxAmountRequired: '9000',
+        asset: 'USDC', payTo: 'body-merchant',
+      }],
+    };
+    const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64');
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(body, {
+      status: 402, headers: { 'payment-required': encodedHeader },
+    }));
+    const client = new AgentPayClient({ ...clientOptions, fetch: fetchMock });
+    const prepared = await client.preparePaidRequest('https://merchant.example.test/paid');
+    expect(prepared.kind).toBe('ready');
+    if (prepared.kind !== 'ready') throw new Error('Expected a ready request.');
+    expect(prepared.challenge.body).toEqual(body);
+    expect(prepared.challenge.headers['payment-required']).toBe(encodedHeader);
+    expect(prepared.challengeDetails?.x402Version).toBe(2);
+    expect(prepared.paymentRequirement).toMatchObject({
+      amountMinor: '1000', network: 'eip155:84532', payee: 'header-merchant',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the current v2 PAYMENT-REQUIRED shape compatible', async () => {
     const payload = {
       x402Version: 2,

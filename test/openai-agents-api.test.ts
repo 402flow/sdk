@@ -196,7 +196,7 @@ describe('hosted probe', () => {
     );
   });
 
-  it('fails visible secrets, wrong substitution, wrong merchant network, and HTTP responses from blocked hosts', async () => {
+  it('fails visible secrets, wrong substitution, non-challenges, and HTTP responses from blocked hosts', async () => {
     const output = await runSandboxProbe(
       { ...config, canaryHash: hashAuthorization('visible'), sdkVersion: sdk.sdkClientVersion },
       'child-a',
@@ -211,6 +211,43 @@ describe('hosted probe', () => {
       merchantChallenge: false,
       apiReachable: false,
       blockedDestinationRejected: false,
+    });
+  });
+
+  it('rejects a valid merchant challenge for the wrong network', async () => {
+    const output = await runSandboxProbe(
+      { ...config, canaryHash: hashAuthorization('inert'), sdkVersion: sdk.sdkClientVersion },
+      'root',
+      'vault-placeholder',
+      async (input) => {
+        const url = String(input);
+        if (url === config.merchantUrl) {
+          return new Response(null, {
+            status: 402,
+            headers: {
+              'payment-required': Buffer.from(JSON.stringify({
+                x402Version: 2,
+                resource: { url },
+                accepts: [{ network: 'eip155:8453' }],
+              })).toString('base64'),
+            },
+          });
+        }
+        if (url === config.canaryUrl)
+          return json({ authorizationSha256: hashAuthorization('inert') });
+        if (url === config.blockedUrl) throw new Error('network denied');
+        return json({ ok: true });
+      },
+      () => Promise.resolve(sdk),
+    );
+    expect(output.checks).toEqual({
+      nodeSupported: true,
+      sdkPlaceholderHeader: true,
+      secretHidden: true,
+      vaultSubstitution: true,
+      merchantChallenge: false,
+      apiReachable: true,
+      blockedDestinationRejected: true,
     });
   });
 
@@ -522,15 +559,30 @@ describe('checkpoint and cleanup', () => {
   it('idle sessions without a completed root time out and still clean up', async () => {
     const p = provider();
     p.records['/agents/sessions/session-1/turns'] = page([]);
-    const report = await runProbe(
-      config,
-      'test-openai-key',
-      await reportPath(),
-      { sessionBuilder, timeoutMs: 50, fetchImpl: p.fetchImpl },
-    );
-    expect(report.error).toBe('probe_timeout');
-    expect(report.state).toBe('failed');
-    expect(report.cleanup['/agents/sessions/session-1']).toBe('deleted');
+    const path = await reportPath();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const wait: typeof delay = (ms, value, options) => {
+        // Reach the idle poll before expiring the actual probe deadline.
+        vi.advanceTimersByTime(50);
+        return delay(ms, value, options);
+      };
+      const report = await runProbe(
+        config,
+        'test-openai-key',
+        path,
+        { sessionBuilder, timeoutMs: 50, fetchImpl: p.fetchImpl, wait },
+      );
+      expect(p.calls).toContainEqual(expect.objectContaining({
+        path: '/agents/sessions/session-1/turns', method: 'GET',
+      }));
+      expect(report.resources.sessionId).toBe('session-1');
+      expect(report.error).toBe('probe_timeout');
+      expect(report.state).toBe('failed');
+      expect(report.cleanup['/agents/sessions/session-1']).toBe('deleted');
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('checks setup status at the separate environment endpoint and fails closed', async () => {
     const p = provider();

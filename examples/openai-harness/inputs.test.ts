@@ -2,10 +2,9 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  buildFirstPartyMerchantUrl,
   defaultFirstPartyMerchantBaseUrl,
 } from './first-party-merchant.mjs';
 import {
@@ -14,6 +13,11 @@ import {
 } from './inputs.mjs';
 
 describe('openai agent harness input helpers', () => {
+  beforeEach(() => {
+    vi.stubEnv('X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL', undefined);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
   it('loads and normalizes inline JSON, file JSON, and defaults', () => {
     const tempDirectory = mkdtempSync(join(tmpdir(), 'sdk-harness-inputs-'));
     const fixturePath = join(tempDirectory, 'payload.json');
@@ -138,23 +142,13 @@ describe('openai agent harness input helpers', () => {
       }),
     );
 
-    const previousBaseUrl = process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL;
-    process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL = 'http://127.0.0.1:4123';
-
-    try {
-      expect(loadOpenAiHarnessScenario(fixturePath)).toEqual({
-        name: 'base-sepolia-research-brief-ready',
-        description: 'First-party self-hosted demo merchant scenario.',
-        targetUrl: buildFirstPartyMerchantUrl('/demo-merchant/research-brief/base-sepolia'),
-        method: 'POST',
-      });
-    } finally {
-      if (previousBaseUrl === undefined) {
-        delete process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL;
-      } else {
-        process.env.X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL = previousBaseUrl;
-      }
-    }
+    vi.stubEnv('X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL', 'http://127.0.0.1:4123');
+    expect(loadOpenAiHarnessScenario(fixturePath)).toEqual({
+      name: 'base-sepolia-research-brief-ready',
+      description: 'First-party self-hosted demo merchant scenario.',
+      targetUrl: 'http://127.0.0.1:4123/demo-merchant/research-brief/base-sepolia',
+      method: 'POST',
+    });
   });
 
   it('allows scenarios to omit optional headers, body, and discovery metadata', () => {

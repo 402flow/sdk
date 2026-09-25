@@ -37,32 +37,45 @@ jobs:
       - name: Lint, typecheck, and run tests across SDK packages
         run: npm run check:all
 
-      - name: Build both packages and dry-pack the root SDK
+      - name: Build and dry-pack both packages
         run: |
           npm run pack:check
-          npm --prefix third-party-executors run build
+          npm --prefix third-party-executors run pack:check
 
-      - name: Pack root SDK tarball
+      - name: Pack both SDK tarballs
         run: |
           set -e
           mkdir -p artifacts
           TARBALL="$(npm pack --pack-destination artifacts | tail -n 1)"
           echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
+          ADAPTER_TARBALL="$(npm pack ./third-party-executors --pack-destination artifacts | tail -n 1)"
+          echo "ADAPTER_TARBALL=$ADAPTER_TARBALL" >> "$GITHUB_ENV"
 
-      - name: Install and smoke test packed SDK tarball
+      - name: Install and smoke test both packed SDK tarballs
         run: |
           set -e
           TMP_DIR="$(mktemp -d)"
           cd "$TMP_DIR"
           npm init -y >/dev/null 2>&1
-          npm install "$GITHUB_WORKSPACE/artifacts/$TARBALL" >/dev/null 2>&1
+          npm install "$GITHUB_WORKSPACE/artifacts/$TARBALL" "$GITHUB_WORKSPACE/artifacts/$ADAPTER_TARBALL" >/dev/null 2>&1
           npm pkg set type=module
-          npm install --save-dev --ignore-scripts typescript@5.8.2 @types/node@20 >/dev/null 2>&1
           cp -R "$GITHUB_WORKSPACE/examples/typescript" ./examples
+          cp -R "$GITHUB_WORKSPACE/third-party-executors/examples/typescript" ./adapter-examples
           node --input-type=module -e "const sdk = await import('@402flow/sdk'); if (!sdk.AgentPayClient || !sdk.createAgentPayClient || !sdk.createJsonRequestBody) { throw new Error('Packed artifact missing expected root exports.'); }"
-          ./node_modules/.bin/tsc --noEmit --strict --target ES2022 --module NodeNext --moduleResolution NodeNext --types node examples/*.ts
+          node --input-type=module <<'NODE'
+          const root = await import('@402flow/sdk-third-party-executors');
+          const dexter = await import('@402flow/sdk-third-party-executors/dexter');
+          const paySh = await import('@402flow/sdk-third-party-executors/pay-sh');
+          for (const factory of [root.createDexterExecutor, root.createPayShExecutor, dexter.createDexterExecutor, paySh.createPayShExecutor]) {
+            if (typeof factory !== 'function') throw new Error('Packed adapter missing an expected export.');
+          }
+          NODE
+          for TS_VERSION in 5.8.2 5.9.3; do
+            npm install --save-dev --ignore-scripts "typescript@$TS_VERSION" @types/node@20 >/dev/null 2>&1
+            ./node_modules/.bin/tsc --noEmit --strict --target ES2022 --module NodeNext --moduleResolution NodeNext --types node examples/*.ts adapter-examples/*.ts
+          done
 
-      - name: Upload packed SDK tarball
+      - name: Upload packed SDK tarballs
         if: ${{ matrix.node-version == 22 }}
         uses: actions/upload-artifact@v4
         with:

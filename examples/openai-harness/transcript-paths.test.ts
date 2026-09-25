@@ -18,31 +18,17 @@ describe('openai agent harness transcript path helpers', () => {
     );
   });
 
-  it('uses the same timestamped naming scheme for transcript and log artifacts', () => {
+  it.each([
+    'solana-devnet-research-brief-bazaar-revise',
+    'base-mainnet-research-brief-ready',
+  ])('uses matching transcript and log timestamps for %s', (scenario) => {
     const paths = createScenarioArtifactPaths(
-      'solana-devnet-research-brief-bazaar-revise',
+      scenario,
       new Date('2026-04-17T22:55:34.466Z'),
     );
-
     expect(paths).toEqual({
-      transcriptPath:
-        `${scenarioRunsDir}/solana-devnet-research-brief-bazaar-revise-run-20260417T225534Z.json`,
-      logPath:
-        `${scenarioRunsDir}/solana-devnet-research-brief-bazaar-revise-run-20260417T225534Z.log`,
-    });
-  });
-
-  it('supports timestamped artifact paths for Base research brief scenarios', () => {
-    const paths = createScenarioArtifactPaths(
-      'base-mainnet-research-brief-ready',
-      new Date('2026-04-17T22:55:34.466Z'),
-    );
-
-    expect(paths).toEqual({
-      transcriptPath:
-        `${scenarioRunsDir}/base-mainnet-research-brief-ready-run-20260417T225534Z.json`,
-      logPath:
-        `${scenarioRunsDir}/base-mainnet-research-brief-ready-run-20260417T225534Z.log`,
+      transcriptPath: `${scenarioRunsDir}/${scenario}-run-20260417T225534Z.json`,
+      logPath: `${scenarioRunsDir}/${scenario}-run-20260417T225534Z.log`,
     });
   });
 });

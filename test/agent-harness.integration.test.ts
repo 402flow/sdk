@@ -11,6 +11,73 @@ import {
 } from './agent-harness.test-fixtures.js';
 
 describe('AgentHarness integration flows', () => {
+  it('shares a lost execution, consumes its prepared id, and carries the business key into an explicit retry', async () => {
+    const lostResponse = new TypeError('Payment decision response was lost.');
+    let rejectDecision!: (error: Error) => void;
+    let decisionStarted!: () => void;
+    const started = new Promise<void>((resolve) => { decisionStarted = resolve; });
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockImplementationOnce(async () => createPaymentRequiredResponse())
+      .mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => {
+        rejectDecision = reject;
+        decisionStarted();
+      }))
+      .mockImplementationOnce(async () => createPaymentRequiredResponse())
+      .mockImplementationOnce(async () => createAllowDecisionResponse({
+        status: 200, headers: { 'content-type': 'text/plain' }, body: 'recovered',
+      }));
+    let preparation = 0;
+    const harness = new AgentHarness({
+      client: new AgentPayClient({
+        controlPlaneBaseUrl: 'http://localhost:3001',
+        auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+        ...baseContext,
+        fetch: fetchMock,
+      }),
+      createPreparedId: () => `prepared-${++preparation}`,
+    });
+    const request = { url: 'https://merchant.example.com/data', method: 'GET' };
+    const executionContext = { idempotencyKey: 'same-business-operation' };
+    await harness.preparePaidRequest(request);
+    const attempts = Promise.allSettled([
+      harness.executePreparedRequest({ preparedId: 'prepared-1', executionContext }),
+      harness.executePreparedRequest({ preparedId: 'prepared-1', executionContext }),
+    ]);
+    await started;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    rejectDecision(lostResponse);
+    const results = await attempts;
+    expect(results).toEqual([
+      { status: 'rejected', reason: expect.objectContaining({ cause: lostResponse }) },
+      { status: 'rejected', reason: expect.objectContaining({ cause: lostResponse }) },
+    ]);
+    if (results[0].status === 'rejected' && results[1].status === 'rejected') {
+      expect(results[0].reason).toBe(results[1].reason);
+    }
+    expect(harness.getExecutionResult('prepared-1')).toEqual({
+      preparedId: 'prepared-1', state: 'consumed',
+    });
+    expect(await harness.executePreparedRequest({ preparedId: 'prepared-1' }))
+      .toMatchObject({
+        harnessDisposition: 'rejected', rejectionCode: 'prepared_request_consumed',
+      });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // The caller explicitly chooses a retry for the unchanged business operation.
+    await harness.preparePaidRequest(request);
+    expect(await harness.executePreparedRequest({ preparedId: 'prepared-2', executionContext }))
+      .toMatchObject({ harnessDisposition: 'executed', sdkOutcomeKind: 'success' });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    const decisions = fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith('/payment-decisions'));
+    expect(decisions).toHaveLength(2);
+    for (const [, init] of decisions) {
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        idempotencyKey: 'same-business-operation',
+      });
+    }
+  });
+
   it('stores merchant response payloads so callers can assert on semantic completion', async () => {
     const holidayPayload = {
       country: 'DE',

@@ -520,13 +520,17 @@ describe('Paid request durable boundary', () => {
   });
   it('keeps a lost runtime exchange ambiguous and never retries it', async () => {
     const p = provider();
+    let exchanges = 0;
     const report = await runPaidRequest(config, secrets, await path(), {
       fetchImpl: async (input, init) => {
-        if (String(input).endsWith('/sdk/runtime-tokens'))
+        if (String(input).endsWith('/sdk/runtime-tokens')) {
+          exchanges++;
           throw new Error('lost response');
+        }
         return p.fetchImpl(input, init);
       },
     });
+    expect(exchanges).toBe(1);
     expect(report.runtimeExchangePending).toBe(true);
     expect(report.runtimeCleanup).toBe('unknown');
     expect(report.state).toBe('failed');
@@ -563,6 +567,19 @@ describe('Paid request durable boundary', () => {
     ).rejects.toThrow();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+  it.each(['fingerprint', 'identity'])(
+    'rejects a valid snapshot with a changed %s before dispatch',
+    async (field) => {
+      const value = await checkpoint();
+      if (field === 'fingerprint') value.fingerprint = '0'.repeat(64);
+      else value.identity.agent = 'changed-agent';
+      const fetchImpl = vi.fn<typeof fetch>();
+      await expect(
+        executeCheckpoint(value, 'placeholder', fetchImpl),
+      ).rejects.toThrow('paid_request_checkpoint_mismatch');
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
   it.each(['network', 'price', 'method', 'nextAction'])(
     'rejects unsafe %s preparation',
     async (field) => {
@@ -1163,5 +1180,101 @@ describe('Paid request failure and evidence boundaries', () => {
         { OPENAI_AGENTS_OPERATOR_TOKEN: 'fixture' },
       ),
     ).rejects.toThrow('paid_request_requires_explicit_testnet_payment_authorization');
+  });
+});
+
+describe('Paid request recovery commands', () => {
+  async function savedReport() {
+    const reportPath = await path();
+    const report = paidRequestReportSchema.parse({
+      workflow: 'paid-request', schemaVersion: 1, sdkVersion: sdkClientVersion,
+      config, startedAt: '2026-09-24T12:00:00.000Z', state: 'running',
+      checkpoint: await checkpoint(),
+      resources: { sessionId: 'session-1', vaultId: 'vault-1', credentialId: 'credential-1' },
+      runtimeSessionId: id(6), runtimeCredentialId: config.credentialId,
+      runtimeExchangePending: false, runtimeSessionsBefore: [],
+      runtimeCleanup: 'unknown', cleanup: {},
+    });
+    await writeReport(reportPath, report);
+    return { reportPath, report };
+  }
+  const env = {
+    OPENAI_AGENTS_OPERATOR_TOKEN: secrets.operatorToken,
+    OPENAI_API_KEY: secrets.openaiKey,
+  };
+
+  it('paid-cleanup revokes capability before deleting saved resources and persists the interrupted state', async () => {
+    const { reportPath } = await savedReport();
+    const p = provider();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(p.fetchImpl);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await mainPaidRequest('paid-cleanup', { report: reportPath }, env);
+    const mutations = p.calls.filter((call) => call.method !== 'GET');
+    expect(mutations[0]).toMatchObject({
+      method: 'POST', url: `${controlPlaneBaseUrl}${p.agent}/runtime-sessions/${id(6)}/revoke`,
+    });
+    expect(mutations.slice(1).map(({ url, method }) => [method, new URL(url).pathname]))
+      .toEqual(expect.arrayContaining([
+        ['POST', '/v1/agents/sessions/session-1/events'],
+        ['DELETE', '/v1/agents/sessions/session-1'],
+        ['DELETE', '/v1/vaults/vault-1/credentials/credential-1'],
+        ['DELETE', '/v1/vaults/vault-1'],
+      ]));
+    expect(mutations).toHaveLength(5);
+    const saved = paidRequestReportSchema.parse(JSON.parse(await readFile(reportPath, 'utf8')));
+    expect(saved).toMatchObject({
+      state: 'failed', error: 'paid_request_interrupted', runtimeCleanup: 'revoked',
+      cleanup: {
+        '/agents/sessions/session-1': 'deleted',
+        '/vaults/vault-1/credentials/credential-1': 'deleted',
+        '/vaults/vault-1': 'deleted',
+      },
+    });
+    expect(process.exitCode).not.toBe(1);
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/test-openai-key|test-operator-token/);
+  });
+
+  it.each([false, true])('paid-reconcile is read-only and scopes records to the operation (empty=%s)', async (empty) => {
+    const { reportPath } = await savedReport();
+    const original = await readFile(reportPath, 'utf8');
+    const p = provider();
+    const matching = {
+      id: receipt.paidRequestId, receiptId: receipt.receiptId,
+      organizationId: config.organizationId, agentId: config.agentId,
+      idempotencyKey: `openai-agents-paid-request:${config.operationId}`,
+      state: 'future_state',
+    };
+    p.records[`${p.org}/paid-requests`] = { paidRequests: empty ? [] : [
+      matching,
+      { ...matching, id: id(31), organizationId: id(32) },
+      { ...matching, id: id(33), agentId: id(34) },
+      { ...matching, id: id(35), idempotencyKey: 'another-operation' },
+    ] };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(p.fetchImpl);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await mainPaidRequest('paid-reconcile', { report: reportPath }, {
+      OPENAI_AGENTS_OPERATOR_TOKEN: secrets.operatorToken,
+    });
+    expect(p.calls.map(({ method, url }) => [method, new URL(url).pathname]))
+      .toEqual([['GET', `${p.org}/paid-requests`]]);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+      readOnly: true, retryAuthorized: false,
+      matches: empty ? [] : [{
+        paidRequestId: receipt.paidRequestId, receiptId: receipt.receiptId,
+        state: 'inspect_control_plane',
+      }],
+    });
+    expect(await readFile(reportPath, 'utf8')).toBe(original);
+  });
+
+  it.each(['paid-cleanup', 'paid-reconcile'])('%s rejects a tampered saved checkpoint before network access', async (command) => {
+    const { reportPath, report } = await savedReport();
+    report.checkpoint!.fingerprint = '0'.repeat(64);
+    await writeReport(reportPath, report);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network access'));
+    await expect(mainPaidRequest(command, { report: reportPath }, env))
+      .rejects.toThrow('paid_request_checkpoint_mismatch');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

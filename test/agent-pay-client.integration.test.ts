@@ -13,6 +13,83 @@ import {
 
 describe('AgentPayClient integration flows', () => {
 
+  it.each([
+    ['dexter', '00000000-0000-0000-0000-000000000032'],
+    ['pay_sh', '00000000-0000-0000-0000-000000000033'],
+  ])(
+    'surfaces authorization denials before invoking the %s executor',
+    async (provider, policyReviewEventId) => {
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({
+        outcome: 'deny',
+        paidRequestId: baseReceipt.paidRequestId,
+        reasonCode: 'policy_review_required',
+        reason: 'Policy review required before delegated execution.',
+        policyReviewEventId,
+      }, { status: 201 }));
+      const executor = {
+        provider,
+        execute: vi.fn(async () => ({
+          protocol: 'x402' as const,
+          executionStatus: 'succeeded' as const,
+          settlementEvidenceClass: 'merchant_verifiable_success' as const,
+          merchantOutcome: 'success_response' as const,
+        })),
+      };
+      const client = new AgentPayClient({
+        controlPlaneBaseUrl: 'http://localhost:3001',
+        auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+        ...baseContext,
+        fetch: fetchMock,
+      });
+      const prepared = await client.preparePaidRequest(
+        'https://merchant.example.com/paid', {}, { challenge: baseChallenge },
+      );
+      if (prepared.kind !== 'ready') throw new Error('Expected a ready request.');
+      const error = await client.executePreparedRequest(prepared, {
+        executionProvider: provider, executor,
+      }).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(FetchPaidError);
+      expect(error).toMatchObject({
+        kind: 'denied',
+        reason: 'Policy review required before delegated execution.',
+        policyReviewEventId,
+      });
+      expect(executor.execute).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('http://localhost:3001/api/sdk/payment-authorizations');
+      expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)))
+        .toMatchObject({ context: { executionProvider: provider } });
+    },
+  );
+
+  it.each(['not json', JSON.stringify({ outcome: 'allow' })])(
+    'rejects an invalid successful payment-decision body without retrying: %s',
+    async (body) => {
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(body, {
+        status: 201, headers: { 'content-type': 'application/json' },
+      }));
+      const client = new AgentPayClient({
+        controlPlaneBaseUrl: 'http://localhost:3001',
+        auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
+        ...baseContext, fetch: fetchMock,
+      });
+      const prepared = await client.preparePaidRequest(
+        'https://merchant.example.com/paid', {}, { challenge: baseChallenge },
+      );
+      if (prepared.kind !== 'ready') throw new Error('Expected a ready request.');
+      const error = await client.executePreparedRequest(prepared).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(FetchPaidError);
+      if (!(error instanceof FetchPaidError)) throw error;
+      expect(error).toMatchObject({
+        kind: 'request_failed',
+        reason: 'Payment decision response did not match the SDK contract.',
+      });
+      expect(error.response.status).toBe(201);
+      expect(await error.response.text()).toBe(body);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('prepares a paid request with normalized challenge terms and external metadata hints', async () => {
     const paymentRequired = {
       x402Version: 2,

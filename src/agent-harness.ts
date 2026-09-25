@@ -671,12 +671,13 @@ export class AgentHarness {
   ): Promise<AgentHarnessExecutionResult> {
     const executionPromise = this.runExecution(record, executionContext)
       .then((outcome) => {
-        record.state = 'consumed';
         record.executionResult = createFrozenClone(outcome);
 
         return record.executionResult;
       })
       .finally(() => {
+        // A lost response cannot establish that payment execution never began.
+        record.state = 'consumed';
         delete record.executionPromise;
       });
 

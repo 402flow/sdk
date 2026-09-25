@@ -32,8 +32,6 @@ vi.mock('./pay-sh-executor.js', () => {
   };
 });
 
-import { createPayShExecutor } from './index.js';
-
 const preparedInput = {
   prepared: {
     kind: 'ready',
@@ -72,12 +70,14 @@ const preparedInput = {
 
 describe('package root entrypoint', () => {
   beforeEach(() => {
+    vi.resetModules();
     createPayShExecutorMock.mockReset();
     dexterModuleLoaded.mockReset();
     payShModuleLoaded.mockReset();
   });
 
   it('executes pay.sh without importing the Dexter module', async () => {
+    const { createPayShExecutor } = await import('./index.js');
     const delegatedResult: SdkDelegatedExecutionResult = {
       protocol: 'x402',
       executionStatus: 'inconclusive',

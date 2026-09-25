@@ -97,8 +97,9 @@ Important behavior:
 2. expiry is checked lazily when a record is accessed; there is no background cleanup loop
 3. every preparation belongs to a preparation lineage identified by `preparationLineageId`; passing an earlier preparation's `preparationLineageId` into a new prepare call supersedes the older active preparations in that lineage only, while preparations in different lineages never supersede one another, even for the same endpoint
 4. concurrent execute calls for the same active `preparedId` share one in-flight execution in that same process
-5. after a `preparedId` is consumed, later execute calls return a stable harness-local rejection instead of creating another payment attempt implicitly
-6. hosts should prepare again if they want an explicit retry path
+5. a dispatched `preparedId` is consumed when execution settles, including when a transport error escapes without a known outcome; the error still reaches the caller, and later execute calls return a stable harness-local rejection
+6. a consumed record without an execution result does not prove that no payment occurred; reconcile the outcome and follow the [compatibility retry guidance](compatibility.md#safe-retries) before an explicit retry
+7. an explicit retry requires a new preparation; for the same URL, method, body, agent identity, and business operation, pass the original business idempotency key in `executionContext`
 
 ## Environment
 

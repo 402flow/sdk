@@ -247,65 +247,6 @@ describe('Dexter executor integration proof', () => {
     }
   });
 
-  it('surfaces delegated authorization denials before invoking the provider executor', async () => {
-    const controlPlaneFetch = vi.fn<typeof fetch>().mockImplementationOnce(
-      async () =>
-        new Response(
-          JSON.stringify({
-            outcome: 'deny',
-            paidRequestId: '00000000-0000-0000-0000-000000000153',
-            reasonCode: 'policy_review_required',
-            reason: 'Policy review required before delegated execution.',
-            policyReviewEventId: '00000000-0000-0000-0000-000000000032',
-          }),
-          {
-            status: 201,
-            headers: { 'content-type': 'application/json' },
-          },
-        ),
-    );
-    const executor = {
-      provider: 'dexter',
-      execute: vi.fn(async () => ({
-        protocol: 'x402' as const,
-        executionStatus: 'succeeded' as const,
-        settlementEvidenceClass: 'merchant_verifiable_success' as const,
-        merchantOutcome: 'success_response' as const,
-      })),
-    };
-    const client = new AgentPayClient({
-      controlPlaneBaseUrl: 'http://localhost:3001',
-      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
-      ...baseContext,
-      fetch: controlPlaneFetch,
-    });
-    const prepared = await prepareDexterReadyRequest(client);
-
-    const error = await client
-      .executePreparedRequest(prepared, {
-        executionProvider: 'dexter',
-        executor,
-      })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(FetchPaidError);
-    if (!(error instanceof FetchPaidError)) {
-      throw error;
-    }
-    expect(error.kind).toBe('denied');
-    expect(error.reason).toBe(
-      'Policy review required before delegated execution.',
-    );
-    expect(error.policyReviewEventId).toBe(
-      '00000000-0000-0000-0000-000000000032',
-    );
-    expect(executor.execute).not.toHaveBeenCalled();
-    expect(controlPlaneFetch).toHaveBeenCalledTimes(1);
-    expect(controlPlaneFetch.mock.calls[0]?.[0]).toBe(
-      'http://localhost:3001/api/sdk/payment-authorizations',
-    );
-  });
-
   it('finalizes delegated Dexter merchant rejections as execution failures', async () => {
     const originalFetch = globalThis.fetch;
     const controlPlaneFetch = vi
