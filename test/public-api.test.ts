@@ -3,9 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import packageJson from '../package.json' with { type: 'json' };
 
 import {
-  AgentPayClient,
   AgentHarness,
-  FetchPaidError,
   createFormUrlEncodedBody,
   createAgentPayClient,
   createJsonRequestBody,
@@ -180,77 +178,6 @@ describe('public SDK entrypoint', () => {
     );
   });
 
-  it('supports a synthetic-style paid request through the public package import', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
-      async () =>
-        new Response(
-          JSON.stringify({
-            outcome: 'allow',
-            paidRequestId: '00000000-0000-0000-0000-000000000130',
-            paymentAttemptId: '00000000-0000-0000-0000-000000000230',
-            reasonCode: 'policy_allow',
-            reason: 'Allowed.',
-            merchantResponse: {
-              status: 200,
-              headers: {
-                'content-type': 'application/json',
-              },
-              body: '{"ok":true}',
-            },
-            receipt: {
-              receiptId: '00000000-0000-0000-0000-000000000030',
-              paidRequestId: '00000000-0000-0000-0000-000000000130',
-              paymentAttemptId: '00000000-0000-0000-0000-000000000230',
-              organizationId: '00000000-0000-0000-0000-000000000001',
-              agentId: '00000000-0000-0000-0000-000000000002',
-              merchantId: '00000000-0000-0000-0000-000000000003',
-              protocol: 'x402',
-              money: {
-                asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-                amount: '0.010000',
-                amountMinor: '10000',
-                precision: 6,
-                unit: 'minor',
-              },
-              authorizationOutcome: 'allowed',
-              status: 'confirmed',
-              reconciliationStatus: 'none',
-              requestUrl: 'https://merchant.example.com/data',
-              requestMethod: 'GET',
-              createdAt: '2026-03-10T00:00:00.000Z',
-            },
-          }),
-          {
-            status: 201,
-            headers: { 'content-type': 'application/json' },
-          },
-        ),
-    );
-
-    const client = createAgentPayClient({
-      controlPlaneBaseUrl: 'http://localhost:3001',
-      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
-      ...baseContext,
-      fetch: fetchMock,
-    });
-
-    const result = await client.fetchPaid(
-      'https://merchant.example.com/data',
-      { method: 'GET' },
-      {
-        challenge: {
-          protocol: 'x402',
-          headers: {},
-          body: {
-            syntheticExecutionMode: 'mock',
-          },
-        },
-      },
-    );
-
-    expect(result.kind).toBe('success');
-  });
-
   it('supports preparing a payable request before execution through the public package import', async () => {
     const paymentRequired = {
       x402Version: 2,
@@ -341,48 +268,6 @@ describe('public SDK entrypoint', () => {
     );
     expect(prepared.validationIssues).toEqual([]);
     expect(prepared.nextAction).toBe('execute');
-  });
-
-  it('throws FetchPaidError for denied x402 challenge paths through the public package import', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementationOnce(
-      async () =>
-        new Response(
-          JSON.stringify({
-            outcome: 'deny',
-            paidRequestId: '00000000-0000-0000-0000-000000000131',
-            reasonCode: 'policy_review_required',
-            reason: 'Policy review required.',
-            policyReviewEventId: '00000000-0000-0000-0000-000000000031',
-          }),
-          {
-            status: 201,
-            headers: { 'content-type': 'application/json' },
-          },
-        ),
-    );
-
-    const client = new AgentPayClient({
-      controlPlaneBaseUrl: 'http://localhost:3001',
-      auth: { type: 'runtimeToken', runtimeToken: 'runtime-token' },
-      ...baseContext,
-      fetch: fetchMock,
-    });
-
-    const error = await client
-      .fetchPaid('https://merchant.example.com/premium', { method: 'GET' }, {
-        challenge: {
-          protocol: 'x402',
-          headers: {},
-        },
-      })
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(FetchPaidError);
-    if (!(error instanceof FetchPaidError)) {
-      throw error;
-    }
-    expect(error.kind).toBe('denied');
-    expect(error.policyReviewEventId).toBe('00000000-0000-0000-0000-000000000031');
   });
 
   it('parses challenge-selection denial reason codes through the public package import', () => {

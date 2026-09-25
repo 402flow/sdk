@@ -66,6 +66,34 @@ describe('createDexterExecutor', () => {
     payAndFetchMock.mockReset();
   });
 
+  it('maps no_payment_options to a typed preflight failure', async () => {
+    payAndFetchMock.mockResolvedValueOnce({
+      ok: false,
+      reason: 'no_payment_options',
+      detail: 'no generically payable scheme offered (got: )',
+    });
+
+    const executor = createDexterExecutor({ wallets });
+    const result = await executor.execute(preparedInput);
+
+    expect(result).toMatchObject({
+      protocol: 'x402',
+      executionStatus: 'preflight_failed',
+      settlementEvidenceClass: 'none',
+      merchantOutcome: 'unknown',
+      diagnostic: {
+        code: 'preflight_incompatible',
+        message: 'no generically payable scheme offered (got: )',
+      },
+      protocolArtifacts: {
+        dexter: {
+          reason: 'no_payment_options',
+          detail: 'no generically payable scheme offered (got: )',
+        },
+      },
+    });
+  });
+
   it('maps settlement_failed to merchant_execution_failed', async () => {
     payAndFetchMock.mockResolvedValueOnce({
       ok: false,
