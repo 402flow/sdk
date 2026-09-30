@@ -1,17 +1,20 @@
 # Clean-room SDK Integration Review
 
-Original clean-room review date: 2026-07-26
+This is a dated record of an integration review that started from the
+published package and customer docs alone. It is not updated for each release.
+For the current contract, see [the compatibility guide](compatibility.md).
 
-Current source review update: 2026-09-05, SDK and adapter `0.1.2`.
+- Original clean-room review: 2026-07-26, `0.1.0-alpha.30`
+- Source review update: 2026-09-05, SDK and adapter `0.1.2`
 
-## Current 0.1.2 status
+## Source review update, 2026-09-05 (0.1.2)
 
 Both package manifests and the adapter's exact SDK peer dependency are aligned
 at `0.1.2`. On Node 22.22.1 under WSL with TypeScript 5.9.3,
 `npm run check:all` passed lint, typechecking, 93 core tests, and 17 adapter tests.
 After the dependency update, these checks passed again, along with
 `npm run pack:check` and `npm --prefix third-party-executors run pack:check`.
-The production-only core audit reports zero findings.
+The production-only core audit reported zero findings.
 
 Since the original review, `AgentHarness` has added explicit preparation
 lineages: revisions supersede preparations in the same lineage, while unrelated
@@ -20,17 +23,16 @@ schemas also accept optional executor-reported payment terms for control-plane
 comparison with the authorization snapshot. These changes are included in the
 current source checks.
 
-This update validates the current source checkout. The published-package,
-TypeScript 5.8, hosted merchant, and paid campaign results below are
-historical evidence from the original review; they were not rerun for this
-update and do not establish a fresh `0.1.2` release campaign pass.
+This update validated the source checkout at that time. The published-package,
+TypeScript 5.8, hosted merchant, and paid campaign results below come from the
+original review. They were not rerun for this update and do not establish a
+fresh `0.1.2` release campaign pass.
 
 Funded Dexter mainnet settlement remains intentionally deferred. On 2026-09-05,
-the user confirmed that they do not intend to fund a Dexter wallet with real
-money yet. This is an accepted verification boundary, not an outstanding action
-for this review.
+the maintainers chose not to fund a Dexter wallet with real money yet. This is an
+accepted verification boundary, not an open action for this review.
 
-### Current adapter dependency findings
+### Adapter dependency findings
 
 After dependency remediation on 2026-09-05,
 `npm --prefix third-party-executors audit --omit=dev` reports five high and two
@@ -147,6 +149,56 @@ rewriting would have hidden an origin-integrity defect, so the SDK did not
 rewrite it. The merchant proxy fix now preserves the exact externally visible
 HTTPS URL, as verified by `npm run smoke:hosted-demo`.
 
+### CL-003: The README omitted the Base integration route
+
+The detailed guide named Base Sepolia, but the package front door named only
+Solana devnet. The README now lists both side-effect-free test routes, their
+price, and the mainnet warning.
+
+### CL-004: Abort behavior was undocumented
+
+Merchant probe timeouts reject with the platform `TimeoutError`. An
+already-aborted signal rejects with the caller's reason. These failures are not
+`FetchPaidError`.
+
+### CL-005: Prepared execution has no original-signal deadline
+
+Prepared state is serializable and does not retain `AbortSignal`.
+`executePreparedRequest()` reconstructs the request. The docs now define this
+boundary and show a custom fetch that applies a timeout to each network call.
+
+### CL-006: Failure examples were not reproducible from customer docs
+
+The guides listed paid failure kinds but did not provide an executable contract
+or retry table. The compatibility guide now defines the taxonomy, and tests
+cover transport loss, aborts, idempotency, policy failures, payment failures,
+and paid fulfillment failures.
+
+### CL-007: One transient Base preparation returned passthrough
+
+The first combined live run returned `passthrough/treat_as_passthrough` for Base
+after a raw 402 probe. Two isolated preparations, a cross-network preparation,
+and an exact rerun all returned `ready/execute`. This is recorded as a
+non-reproducible hosted observation, not an SDK defect.
+
+### CL-008: Official adapter documentation stopped at imports
+
+The published docs did not show constructor options, provider credential setup,
+or how to attach an executor to prepared execution. The adapter guide now
+documents these inputs and links to complete executable examples.
+
+### CL-009: Provider subpaths did not reduce installed dependencies
+
+Subpath imports prevent the unused provider from loading and help bundlers, but
+npm still installs both declared provider trees. The documentation now states
+this directly.
+
+### CL-010: Published adapter metadata referenced the previous SDK
+
+The alpha.30 adapter had an alpha.30 exact peer but an alpha.29 SDK development
+dependency. Package metadata and the lockfile are aligned, and a contract test
+now enforces lockstep.
+
 ### CL-011: Hosted merchant availability regression was resolved
 
 The first post-deployment smoke returned valid 402 challenges with exact HTTPS
@@ -198,56 +250,6 @@ succeeded with receipt status `0x1` in block `0x2ee2114`. The representative
 Solana signature
 `4RSCrujm68zB9Yt8qxjYPG5yBdkc4ZN5GfQmFCwmNkp6NfjUNq6YPcGgZBfAhUHBcqYX1QTQ1otb5R7LsfaadDRW`
 was finalized without error in slot `435431184`.
-
-### CL-003: The README omitted the Base integration route
-
-The detailed guide named Base Sepolia, but the package front door named only
-Solana devnet. The README now lists both side-effect-free test routes, their
-price, and the mainnet warning.
-
-### CL-004: Abort behavior was undocumented
-
-Merchant probe timeouts reject with the platform `TimeoutError`. An
-already-aborted signal rejects with the caller's reason. These failures are not
-`FetchPaidError`.
-
-### CL-005: Prepared execution has no original-signal deadline
-
-Prepared state is serializable and does not retain `AbortSignal`.
-`executePreparedRequest()` reconstructs the request. The docs now define this
-boundary and show a custom fetch that applies a timeout to each network call.
-
-### CL-006: Failure examples were not reproducible from customer docs
-
-The guides listed paid failure kinds but did not provide an executable contract
-or retry table. The compatibility guide now defines the taxonomy, and tests
-cover transport loss, aborts, idempotency, policy failures, payment failures,
-and paid fulfillment failures.
-
-### CL-007: One transient Base preparation returned passthrough
-
-The first combined live run returned `passthrough/treat_as_passthrough` for Base
-after a raw 402 probe. Two isolated preparations, a cross-network preparation,
-and an exact rerun all returned `ready/execute`. This is recorded as a
-non-reproducible hosted observation, not an SDK defect.
-
-### CL-008: Official adapter documentation stopped at imports
-
-The published docs did not show constructor options, provider credential setup,
-or how to attach an executor to prepared execution. The adapter guide now
-documents these inputs and links to complete executable examples.
-
-### CL-009: Provider subpaths did not reduce installed dependencies
-
-Subpath imports prevent the unused provider from loading and help bundlers, but
-npm still installs both declared provider trees. The documentation now states
-this directly.
-
-### CL-010: Published adapter metadata referenced the previous SDK
-
-The alpha.30 adapter had an alpha.30 exact peer but an alpha.29 SDK development
-dependency. Package metadata and the lockfile are aligned, and a contract test
-now enforces lockstep.
 
 ## Source inspection ledger
 
@@ -309,8 +311,8 @@ The root ESM entrypoint and current discriminated unions are coherent. Public
 stability tests cover the client, harness, body helpers, schemas, and version
 header. Deep `dist/` imports remain unsupported.
 
-Risk at the original review: `0.1.1` was an early stable-tag release. Exact version pinning remains
-recommended until consumers have validated their integration.
+Risk at review time: `0.1.1` was an early stable-tag release, so exact version
+pinning remained recommended until consumers had validated their integration.
 
 ### Error taxonomy
 

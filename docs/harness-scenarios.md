@@ -1,35 +1,63 @@
 # Harness Scenarios
 
-This document collects the example harness scenarios, recommended preset pairings, and the heavier local and public evaluation notes that do not belong in the package README.
+This guide covers the example scenario packs, the release campaign, and the live
+compatibility targets for the [evaluation runner](evaluation-harness.md).
 
-## Named Scenario Fixture Packs
+Scenario packs are evaluation fixtures, not the SDK contract. They depend on
+specific merchants, infrastructure, prompt behavior, and external endpoints, so
+they change faster than the package API.
 
-Before running SDK examples or scenario sweeps from this repo, create `.env` from `.env.example` in the SDK root. The scenario runner loads SDK-local dotenv files directly.
+## Setup
 
-To rerun the canonical core proving sweep (first-party + mock) and replace any older artifacts in `tmp/` with only the newest results, use:
+Create `.env` from `.env.example` in the SDK root. The runner loads SDK-local env
+files directly, as described in
+[the evaluation guide](evaluation-harness.md#environment). Shell-exported values
+take precedence, so you can point one run at a different control plane or auth
+context.
 
-```bash
-npm run scenario:core
-```
+Live scenarios need:
 
-That command clears `tmp/`, rebuilds the SDK, reruns first-party plus mock scenarios in one run, and writes only the newest logs, transcripts, and semantic summary back under `tmp/`.
+1. a reachable 402flow control plane; the default is hosted staging at `https://api-staging.402flow.ai`
+2. a reachable demo merchant (see [First-Party Merchant URL](#first-party-merchant-url))
+3. an organization and agent that the SDK can authenticate as, with either `X402FLOW_BOOTSTRAP_KEY` or `X402FLOW_RUNTIME_TOKEN` set
+4. a funded, enabled execution rail for each network the run pays on
 
-`scenario:core` is the default release integration campaign, not an offline unit
-test. Its first-party plan includes three paid Base mainnet scenarios and three
-paid Solana mainnet scenarios. At the current merchant price, that is 0.006 USDC
-of mainnet merchant spend, plus any execution-rail network fees. Both mainnet
-rails must be funded and enabled.
+Full `scenario:core` and `scenario:all` runs pay on Base Sepolia, Base mainnet,
+Solana devnet, and Solana mainnet. A single scenario needs only its own rail.
 
-The runner stops at the first process, transcript, or outcome-validation failure.
-For `scenario:core`, each live scenario is also limited by the caller to one
-execution attempt, on its configured merchant route and network, for at most
-1000 minor units of USDC (0.001 USDC). The six mainnet scenarios therefore cannot
-submit more than 0.006 USDC of merchant payments in one run. These caller limits
-do not replace control-plane policy or include network fees and model charges.
-The runner assigns a business idempotency key and saves an `.attempt.json`
-record before execution. It saves partial tool transcripts as calls complete.
-Do not rerun a failed campaign until uncertain outcomes are reconciled: a new
-campaign uses new keys and clears the previous `tmp/` evidence.
+## Run Plans
+
+| Command | Scenarios |
+| --- | --- |
+| `npm run scenario:core` | First-party and mock; the release campaign |
+| `npm run scenario:all` | First-party, third-party, and mock |
+| `npm run scenario:first-party` | First-party demo-merchant scenarios only |
+| `npm run scenario:third-party` | Third-party merchant compatibility scenarios only |
+| `npm run scenario:mock` | Mocked governance outcomes only |
+
+Each command rebuilds the SDK, clears `tmp/`, and writes new logs, transcripts,
+and `tmp/scenario-summary.txt`. Preserve any artifacts you need first. The runner
+stops at the first process, transcript, or outcome-validation failure.
+
+## Release Campaign
+
+`npm run scenario:core` is the default release integration campaign. It is not
+an offline test. It runs 12 first-party scenarios and six mocks. Each
+first-party scenario pays once: six on testnets, three on Base mainnet, and three
+on Solana mainnet. At the current merchant price, mainnet merchant spend is
+0.006 USDC, plus network fees. Both mainnet rails must be funded and enabled.
+
+For this plan only, the caller limits each live scenario to one execution
+attempt, on its configured merchant route and network, for at most 1000 minor
+units of USDC (0.001 USDC). The six mainnet scenarios therefore cannot submit
+more than 0.006 USDC in merchant payments per run. These limits do not replace
+control-plane policy, and they exclude network fees and model charges.
+
+Before execution, the runner assigns each scenario a business idempotency key
+and saves an `.attempt.json` record. It saves partial tool transcripts as calls
+complete. Do not rerun a failed campaign until uncertain outcomes are
+reconciled: a new campaign uses new keys and clears the previous evidence in
+`tmp/`.
 
 The mainnet portion passes only when every Base and Solana mainnet scenario
 records:
@@ -41,212 +69,103 @@ records:
 5. matching successful `execute_prepared_request` and stored
    `get_execution_result` evidence in the transcript
 
-If either mainnet rail cannot run, the release integration campaign is
-incomplete.
+If either mainnet rail cannot run, the campaign is incomplete.
 
-Plan-specific commands:
+## Scenarios
 
-1. `npm run scenario:all`: full mixed sweep (first-party + third-party + mock)
-2. `npm run scenario:core`: core proving sweep (first-party + mock)
-3. `npm run scenario:first-party`: first-party demo-merchant scenarios only
-4. `npm run scenario:third-party`: third-party merchant compatibility scenarios only
-5. `npm run scenario:mock`: fixture-driven mock outcomes only
+### First-party
 
-First-party scenario fixtures now store only the stable demo-merchant route path in the JSON files, for example `/demo-merchant/research-brief/solana-devnet`. At runtime, the scenario loader resolves that path against `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL`, which defaults to `https://demo-merchant-staging.402flow.ai`.
+First-party scenarios target the hosted demo merchant's research-brief routes.
+Their names follow the pattern `<network>-research-brief-<variant>`, where
+`<network>` is `base-sepolia`, `base-mainnet`, `solana-devnet`, or
+`solana-mainnet`. Mainnet variants pay real USDC.
 
-The default hosted first-party base URL is:
+| Variant | Preset | Starting request |
+| --- | --- | --- |
+| `bazaar-revise` | `revise-json-post` | Incomplete body with no external metadata; the agent revises it from merchant-published Bazaar metadata |
+| `ready` | `ready-json-post` | Complete body plus advisory external metadata, ready to execute |
+| `revise` | `revise-json-post` | Incomplete body plus advisory external metadata |
 
-```text
-https://demo-merchant-staging.402flow.ai
-```
+The Solana devnet route is the default first-party path and the best choice when
+request shaping should matter in a real agent loop. The root
+[README](../README.md#hosted-integration-targets) lists all four route URLs.
 
-If you want repo-local self-hosted first-party runs instead, override it with:
+For the revise variants, expect:
 
-```bash
-export X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="http://127.0.0.1:4123"
-```
+1. `prepare_paid_request` returns `nextAction: revise_request` when merchant-published Bazaar metadata shows that required body fields are missing
+2. after one revision, preparation returns `execute`
+3. paid execution returns a deterministic JSON body that echoes the accepted brief input and output sections
+4. `get_execution_result` returns the same stored result
 
-Behavior:
-
-1. first-party fixtures use `/demo-merchant/...` paths instead of embedding a base URL
-2. those first-party paths are resolved against the configured first-party base URL
-3. absolute URLs, including third-party fixtures, are used as written
-4. when unset, first-party paths default to `https://demo-merchant-staging.402flow.ai`
-5. set the env var to `http://127.0.0.1:4123` for repo-local self-hosted runs
-
-Shell-exported values still win when you need to temporarily point the SDK at a different control plane or auth context.
-
-Current named scenarios:
-
-1. `base-sepolia-research-brief-bazaar-revise`: canonical first-party Bazaar-driven revise scenario against the Base Sepolia merchant research brief route
-2. `base-sepolia-research-brief-ready`: canonical first-party agentic scenario against the same route with a complete shaped body ready for execution
-3. `base-sepolia-research-brief-revise`: canonical first-party agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-4. `base-mainnet-research-brief-bazaar-revise`: canonical first-party Bazaar-driven revise scenario against the Base mainnet merchant research brief route
-5. `base-mainnet-research-brief-ready`: canonical first-party agentic scenario against the same route with a complete shaped body ready for execution
-6. `base-mainnet-research-brief-revise`: canonical first-party agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-7. `solana-devnet-research-brief-bazaar-revise`: canonical first-party Bazaar-driven revise scenario against the Solana devnet merchant research brief route
-8. `solana-devnet-research-brief-ready`: canonical first-party agentic scenario against the same route with a complete shaped body ready for execution
-9. `solana-devnet-research-brief-revise`: canonical first-party agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-10. `solana-mainnet-research-brief-bazaar-revise`: canonical first-party Bazaar-driven revise scenario against the Solana mainnet merchant research brief route
-11. `solana-mainnet-research-brief-ready`: canonical first-party agentic scenario against the same route with a complete shaped body ready for execution
-12. `solana-mainnet-research-brief-revise`: canonical first-party agentic scenario against the same route, starting incomplete while also providing advisory external metadata
-13. `nickeljoke-compat`: public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, with `POST` as part of the contract
-14. `auor-public-holidays-reasoning-revise`: GET scenario that derives required query params from merchant hints
-15. `x402-org-protected-ready`: external x402 compatibility scenario for `https://x402.org/protected` that is ready to execute without revision
-16. `policy-denied-budget-exceeded`: mocked governance scenario that returns a budget-cap denial and expects the final answer to explain the policy block clearly
-17. `policy-denied-merchant-not-allowed`: mocked governance scenario that returns a deny-by-default merchant rejection
-18. `policy-blocked-review-event`: mocked governance scenario that returns a denial with `policyReviewEventId` and expects the final answer to explain the policy block and surface the review event
-19. `execution-failed-merchant-rejected`: mocked governance scenario that returns a post-payment merchant rejection
-20. `execution-inconclusive`: mocked governance scenario that returns an honest inconclusive outcome
-21. `preflight-failed-no-rail`: mocked governance scenario that returns a missing-payment-rail failure before execution can succeed
-
-## Recommended Preset Pairings
-
-Recommended pairings:
-
-1. `nickeljoke-compat` -> `ready-json-post`
-2. `auor-public-holidays-reasoning-revise` -> `revise-get-query`
-3. `base-sepolia-research-brief-bazaar-revise` -> `revise-json-post`
-4. `base-sepolia-research-brief-ready` -> `ready-json-post`
-5. `base-sepolia-research-brief-revise` -> `revise-json-post`
-6. `base-mainnet-research-brief-bazaar-revise` -> `revise-json-post`
-7. `base-mainnet-research-brief-ready` -> `ready-json-post`
-8. `base-mainnet-research-brief-revise` -> `revise-json-post`
-9. `solana-devnet-research-brief-bazaar-revise` -> `revise-json-post`
-10. `solana-devnet-research-brief-ready` -> `ready-json-post`
-11. `solana-devnet-research-brief-revise` -> `revise-json-post`
-12. `solana-mainnet-research-brief-bazaar-revise` -> `revise-json-post`
-13. `solana-mainnet-research-brief-ready` -> `ready-json-post`
-14. `solana-mainnet-research-brief-revise` -> `revise-json-post`
-15. `x402-org-protected-ready` -> `ready-json-post`
-16. `policy-denied-budget-exceeded` -> `mock-governance`
-17. `policy-denied-merchant-not-allowed` -> `mock-governance`
-18. `policy-blocked-review-event` -> `mock-governance`
-19. `execution-failed-merchant-rejected` -> `mock-governance`
-20. `execution-inconclusive` -> `mock-governance`
-21. `preflight-failed-no-rail` -> `mock-governance`
-
-## Mock Fixtures
-
-The six mock scenarios are fixture-driven and use the mock client path inside the harness example.
-
-That means:
-
-1. they still exercise the normal `prepare_paid_request` -> `execute_prepared_request` -> `get_execution_result` loop
-2. they still rely on the same `AgentHarness` summarization path as real executions
-3. they do not require a live 402flow API server to produce denials, preflight failures, or inconclusive outcomes
-
-They are useful for checking whether the model reports non-success outcomes honestly instead of defaulting to happy-path language.
-
-## Canonical First-Party Paths
-
-The default first product-representative scenario path is the staged Solana devnet merchant research brief route:
-
-```text
-https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-devnet
-```
-
-This is the canonical first-party path when request shaping should matter in a real agent loop.
-
-The matching EVM testnet scenario path is:
-
-```text
-https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-sepolia
-```
-
-The matching real-money EVM mainnet scenario path is:
-
-```text
-https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/base-mainnet
-```
-
-The matching real-money mainnet scenario path is:
-
-```text
-https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-mainnet
-```
-
-If you want the same first-party paths against a self-hosted merchant, set `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="http://127.0.0.1:4123"` before running the scenarios.
-
-Prerequisites:
-
-1. a reachable 402flow control plane is running, with hosted staging as the default at `https://api-staging.402flow.ai`
-2. the demo merchant is reachable, or the self-hosted demo merchant is running via `pnpm dev:demo-merchant` if you overrode the first-party base URL
-3. an org and agent exist and can authenticate through the SDK
-4. funded Base and Solana mainnet execution rails are enabled for a full
-   `scenario:core` or `scenario:all` run; an individual scenario needs only its
-   matching rail
-5. either `X402FLOW_BOOTSTRAP_KEY` or `X402FLOW_RUNTIME_TOKEN` is set
-
-Example first-party revise run:
+Example revise run:
 
 ```bash
-export OPENAI_API_KEY="..."
-export X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
-export X402FLOW_ORGANIZATION="acme-labs"
-export X402FLOW_AGENT="x402-demo-agent"
-export X402FLOW_BOOTSTRAP_KEY="..."
-
 npm run example:openai-harness -- \
   --preset revise-json-post \
   --scenario solana-devnet-research-brief-revise \
   --transcript-file ./tmp/scenario-runs/solana-devnet-research-brief-revise-run.json
 ```
 
-Run the scenario sweep from the SDK repo itself. Keep SDK scenario setup and credentials in this repo's `.env` so the examples point at staging by default and can still be overridden for local `agent-pay` without a control-plane wrapper.
+### Third-party
 
-Expected outcomes:
+| Scenario | Preset | Target |
+| --- | --- | --- |
+| `nickeljoke-compat` | `ready-json-post` | Public compatibility merchant at `https://nickeljoke.vercel.app/api/joke`, called with `POST` |
+| `auor-public-holidays-reasoning-revise` | `revise-get-query` | GET request whose required query parameters come from merchant hints |
+| `x402-org-protected-ready` | `ready-json-post` | External x402 endpoint `https://x402.org/protected`, ready without revision |
 
-1. `prepare_paid_request` should return `nextAction: revise_request` when merchant-published Bazaar metadata shows required request body fields are missing
-2. after one revision, the scenario should prepare as `execute`
-3. paid execution should return a deterministic JSON body that echoes the accepted brief input and output sections
-4. `get_execution_result` should return the same stored result after execution
+See [Public Compatibility Targets](#public-compatibility-targets) for their
+prerequisites.
 
-## Challenge Details Status
+### Mock
 
-Default surface slimming is still deferred.
+| Scenario | Mocked outcome |
+| --- | --- |
+| `policy-denied-budget-exceeded` | Budget-cap denial; the final answer must explain the policy block |
+| `policy-denied-merchant-not-allowed` | Deny-by-default merchant rejection |
+| `policy-blocked-review-event` | Denial with `policyReviewEventId`; the final answer must explain the block and surface the review event |
+| `execution-failed-merchant-rejected` | Merchant rejection after payment |
+| `execution-inconclusive` | Inconclusive execution outcome |
+| `preflight-failed-no-rail` | Missing payment rail before execution |
 
-`hints` is the preferred request-shaping surface, but the current host-facing prepare result still includes `challengeDetails`, and that is intentional while Bazaar revise coverage remains the proof point for whether `challengeDetails.extensions` can be hidden safely.
+All six use the `mock-governance` preset and a mock client inside the harness
+example. They run the normal `prepare_paid_request`, `execute_prepared_request`,
+and `get_execution_result` loop, with the same `AgentHarness` summarization as
+live runs, but need no live 402flow API. They check that the model reports
+non-success outcomes honestly.
 
-For now:
+## First-Party Merchant URL
 
-1. treat `hints` as the primary revise surface
-2. treat `challengeDetails` as still available for richer merchant-published discovery data
-3. do not assume the default agent-facing surface has been reduced yet
+First-party fixtures store only the route path, such as
+`/demo-merchant/research-brief/solana-devnet`. The loader resolves that path
+against `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL`, which defaults to
+`https://demo-merchant-staging.402flow.ai`. Third-party fixtures use absolute
+URLs as written.
 
-The same readiness rule applies here as everywhere else:
+To run first-party scenarios against a self-hosted demo merchant, such as one
+started with `pnpm dev:demo-merchant` in the 402flow control-plane repository,
+set:
 
-`ready` means this exact request can proceed through governed paid execution as-is; it does not mean the SDK has inferred the best task parameters for you.
+```bash
+export X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="http://127.0.0.1:4123"
+```
 
 ## Public Compatibility Targets
 
+These third-party targets check compatibility with external merchants. They are
+not the product-representative path.
+
 ### Nickeljoke
 
-The first concrete public paid endpoint wired into the harness is the Nickeljoke compatibility merchant:
+`nickeljoke-compat` pays `https://nickeljoke.vercel.app/api/joke`. Use `POST`:
+with `GET`, the paid retry can return `405 Method Not Allowed` even after the
+merchant accepts the payment proof.
 
-```text
-https://nickeljoke.vercel.app/api/joke
-```
-
-Important constraint: use `POST`. Compatibility behavior for `GET` can still lead to `405 Method Not Allowed` on the paid retry even if payment proof is accepted.
-
-Prerequisites:
-
-1. a running 402flow control plane, with hosted staging as the default at `https://api-staging.402flow.ai`
-2. an active organization and agent that the SDK can authenticate as
-3. a merchant record for `https://nickeljoke.vercel.app`
-4. a funded Base Sepolia execution rail enabled for that organization
-5. either `X402FLOW_BOOTSTRAP_KEY` or `X402FLOW_RUNTIME_TOKEN`
-
-Example live run:
+In addition to the [setup](#setup) requirements, the organization needs a
+merchant record for `https://nickeljoke.vercel.app` and a funded, enabled Base
+Sepolia execution rail.
 
 ```bash
-export OPENAI_API_KEY="..."
-export X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
-export X402FLOW_ORGANIZATION="acme-labs"
-export X402FLOW_AGENT="x402-demo-agent"
-export X402FLOW_BOOTSTRAP_KEY="..."
-
 npm run example:openai-harness -- \
   --preset ready-json-post \
   --scenario nickeljoke-compat \
@@ -255,32 +174,11 @@ npm run example:openai-harness -- \
 
 ### x402.org
 
-External paid compatibility run for `https://x402.org/protected`:
+`x402-org-protected-ready` pays `https://x402.org/protected`:
 
 ```bash
-export OPENAI_API_KEY="..."
-export X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
-export X402FLOW_ORGANIZATION="acme-labs"
-export X402FLOW_AGENT="x402-demo-agent"
-export X402FLOW_BOOTSTRAP_KEY="..."
-
 npm run example:openai-harness -- \
   --preset ready-json-post \
   --scenario x402-org-protected-ready \
   --transcript-file ./tmp/x402-org-protected-ready-run.json
 ```
-
-This is a third-party compatibility target, not the canonical product-representative proving path.
-
-## Scenario Credibility Notes
-
-Scenario packs are useful evaluation fixtures, but they are not the SDK contract.
-
-They will age faster than the core package surface because they depend on:
-
-1. specific merchants
-2. local infrastructure assumptions
-3. prompt behavior
-4. external compatibility endpoints
-
-Use them as smoke-test and evaluation material, not as the primary definition of what `@402flow/sdk` is.

@@ -1,7 +1,7 @@
 # SDK Compatibility
 
-This document defines the compatibility contract for `@402flow/sdk`. It covers
-the `0.1.x` release line, currently `0.1.3`. Pin an exact version in production.
+This document defines the compatibility contract for the `@402flow/sdk` `0.1.x`
+release line. Pin an exact version in production.
 
 ## Public API stability
 
@@ -27,7 +27,7 @@ version. The adapter package uses an exact SDK peer dependency.
 
 ## Error taxonomy
 
-Paid decision outcomes throw `FetchPaidError`. Read `error.kind` or
+Non-success paid outcomes throw `FetchPaidError`. Read `error.kind` or
 `error.details.kind` before using outcome-specific fields.
 
 | Kind | Meaning | Funds might have moved |
@@ -49,7 +49,7 @@ Not every failure is a `FetchPaidError`:
 - `AgentHarness` converts its local state errors into
   `harnessDisposition: 'rejected'` results instead of throwing.
 
-Handle platform cancellation before treating an error as an unknown SDK defect:
+Check for platform timeouts before treating an error as an SDK defect:
 
 ```ts
 try {
@@ -67,15 +67,14 @@ try {
 
 ## Semver boundaries
 
-The current release has no prerelease suffix, but the package remains pre-1.0.
-Until `1.0.0`:
+The package is pre-1.0. Until `1.0.0`:
 
 - Pin exact versions.
 - Treat changes to exported types, discriminants, package entrypoints, required
   request fields, and error fields as breaking changes.
 - Release the SDK and official adapter package in lockstep.
-- For alpha prereleases, do not infer compatibility between different alpha
-  versions from npm's default prerelease range behavior.
+- Do not assume that earlier alpha prereleases are compatible with one another,
+  even where npm's prerelease range matching would accept them.
 
 After 1.0, additive optional fields and new error reason codes can ship in a
 minor release. Removing or renaming exports, fields, discriminants, protocols,
@@ -84,12 +83,11 @@ or runtime entrypoints requires a major release.
 ## Runtime and TypeScript compatibility
 
 The supported runtime floor is Node 20. CI runs the full SDK and adapter suite
-on Node 20 and Node 22.
+on Node 20 and Node 22. The adapter package requires Node 20.18 or newer.
 
-The package is ESM-only and uses NodeNext-compatible declarations. The repository
-tests TypeScript 5.8 and currently develops with TypeScript 5.9. Consumers need
-the `DOM` library types because the API uses `fetch`, `RequestInit`, `Response`,
-and `AbortSignal`.
+The package is ESM-only and uses NodeNext-compatible declarations. CI compiles
+with TypeScript 5.8 and 5.9. Consumers need the `DOM` library types because the
+API uses `fetch`, `RequestInit`, `Response`, and `AbortSignal`.
 
 Recommended compiler settings:
 
@@ -107,7 +105,7 @@ Recommended compiler settings:
 
 ## Request and response contracts
 
-Paid request bodies must be replayable. Use a string or `URLSearchParams`.
+Paid request bodies must be replayable: use a string or `URLSearchParams`.
 `createJsonRequestBody()` and `createFormUrlEncodedBody()` create supported
 bodies. `FormData`, `Blob`, and streams are not supported in paid flows.
 
@@ -116,13 +114,13 @@ bodies. `FormData`, `Blob`, and streams are not supported in paid flows.
 - `kind: 'passthrough'` when the merchant did not require payment.
 - `kind: 'success'` when paid fulfillment succeeded.
 
-All paid non-success outcomes throw `FetchPaidError`. Narrow `result.kind`
-before reading `receiptId`, `paidRequestId`, `paymentAttemptId`, or `receipt`.
+All other paid outcomes throw `FetchPaidError`. Narrow `result.kind` before
+reading `receiptId`, `paidRequestId`, `paymentAttemptId`, or `receipt`.
 
-`preparePaidRequest()` returns a serializable request. It preserves URL, method,
-headers, body, and the merchant challenge. It does not preserve the original
-`AbortSignal`. `executePreparedRequest()` reconstructs the exact serializable
-request and does not probe the merchant again.
+`preparePaidRequest()` returns a serializable request that preserves the URL,
+method, headers, body, and merchant challenge, but not the original
+`AbortSignal`. `executePreparedRequest()` rebuilds that exact request and does
+not probe the merchant again.
 
 The SDK validates control-plane responses at runtime. A response that does not
 match the exported Zod contract becomes `FetchPaidError` with
@@ -145,15 +143,15 @@ Changing the request while reusing a key is a caller error.
 | `execution_inconclusive` | Reconcile first; never switch to a new key to force another payment |
 | `request_failed` or transport loss | Retry with the same key because the server may have received the first request |
 
-`AgentHarness` shares concurrent execution calls for one `preparedId`. After an
-execution is consumed, prepare again for an explicit retry. Carry the original
-business idempotency key into that retry.
+`AgentHarness` shares concurrent execution calls for one `preparedId`. Once an
+execution is consumed, an explicit retry needs a new preparation that carries
+the original business idempotency key.
 
-The original `RequestInit.signal` controls the merchant probe. It does not define
-a whole-operation deadline after paid execution starts. To bound every network
-call, supply a custom `fetch` in `AgentPayClientOptions`. See
+The original `RequestInit.signal` controls only the merchant probe. It does not
+set a deadline for the whole operation once paid execution starts. To bound every
+network call, supply a custom `fetch` in `AgentPayClientOptions`. See
 [`examples/typescript/timeout-client.ts`](../examples/typescript/timeout-client.ts).
-A per-call timeout is not proof that payment did not happen.
+A per-call timeout does not prove that no payment happened.
 
 ## Older x402 behavior
 
@@ -166,9 +164,9 @@ The SDK accepts these merchant challenge forms:
 - `WWW-Authenticate` challenges that identify `x402`.
 - JSON-body challenges when the response content type is JSON.
 
-The SDK preserves legacy network aliases such as `base-sepolia`; it does not
-silently rewrite them to CAIP-2 identifiers. Control-plane compatibility must
-support the identifier the merchant supplied.
+The SDK keeps legacy network aliases such as `base-sepolia` as the merchant sent
+them and does not rewrite them to CAIP-2 identifiers. The control plane must
+support whichever identifier the merchant supplied.
 
 Migration tests live in
 [`test/x402-migration.test.ts`](../test/x402-migration.test.ts). Add a fixture
@@ -177,7 +175,8 @@ header precedence.
 
 ## Hosted demo contract
 
-The customer smoke test checks the public Base Sepolia and Solana devnet routes:
+The smoke test probes all four hosted demo routes (Base Sepolia, Base mainnet,
+Solana devnet, and Solana mainnet) without paying:
 
 ```bash
 npm run smoke:hosted-demo
@@ -185,4 +184,4 @@ npm run smoke:hosted-demo
 
 Each route must return HTTP 402, a valid x402 v2 `PAYMENT-REQUIRED` header, at
 least one accepted payment method, and a challenge resource URL that exactly
-matches the external HTTPS request URL. The smoke test does not submit payment.
+matches the external HTTPS request URL.

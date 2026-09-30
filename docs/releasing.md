@@ -1,65 +1,61 @@
-# Publishing
+# Releasing
 
-This guide covers release checks and publish order for `@402flow/sdk` and `@402flow/sdk-third-party-executors`.
+This guide covers release checks and publish order for `@402flow/sdk` and
+`@402flow/sdk-third-party-executors`. Both packages share one version, and the
+adapter's peer dependency pins that exact SDK version.
 
-## Repo-Wide Verification
+## Checks
 
 From the SDK root:
 
 ```bash
 npm run install:all
 npm run check:all
-npm run smoke:hosted-demo
 npm run pack:check
+npm --prefix third-party-executors run pack:check
+npm run smoke:hosted-demo
 ```
 
-`npm run check:all` validates the main SDK package first and then the separate `third-party-executors` package.
+`check:all` lints, typechecks, and tests the core SDK, then the adapter package.
+The pack checks build each package and run `npm pack --dry-run`. SDK CI also
+installs both packed tarballs, imports them, and compiles the TypeScript
+examples against them; confirm that CI passed for the release commit.
 
-`npm run smoke:hosted-demo` makes unpaid probes against the public Base Sepolia,
-Base mainnet, Solana devnet, and Solana mainnet routes. Do not publish
-customer-facing demo URLs while this check fails.
+`smoke:hosted-demo` makes unpaid probes against the Base Sepolia, Base mainnet,
+Solana devnet, and Solana mainnet demo routes. Do not publish customer-facing
+demo URLs while this check fails.
 
-Also run `npm --prefix third-party-executors run pack:check` and verify installed
-tarball imports and consumer TypeScript compilation, as covered by SDK CI.
+## Release Campaign
 
-The release integration gate is `npm run scenario:core`; see
-[the scenario campaign](harness-scenarios.md) for prerequisites and required
-evidence. This command clears `tmp/`, so preserve any hosted probe reports and
-recovery checkpoints first. It includes three paid Base mainnet and three paid
-Solana mainnet requests. Obtain payment authorization before running it, and
-use a control plane that accepts the candidate SDK version. Both rails must
+`npm run scenario:core` is the release integration gate. See
+[the scenario guide](harness-scenarios.md#release-campaign) for prerequisites and
+required evidence.
+
+The campaign clears `tmp/`, so preserve any hosted probe reports and recovery
+checkpoints first. It makes paid requests, including three on Base mainnet and
+three on Solana mainnet, so obtain payment authorization before running it. Use a
+control plane that accepts the candidate SDK version. Both mainnet rails must
 pass; local tests and unpaid probes do not replace this campaign.
 
 ## Publish Order
 
-Publish the main SDK package first.
-Publish `@402flow/sdk-third-party-executors` second, after the matching SDK version is available.
-
-### Main SDK Package
+Publish the core SDK first. Publish the adapter package after the matching SDK
+version is available on npm.
 
 From the SDK root:
 
 ```bash
-npm run install:all
-npm run check:all
-npm run pack:check
 npm publish --access public
 ```
-
-`npm publish` also runs `npm run check:all` through the root `prepublishOnly` hook.
-
-### Adapter Package
 
 From `third-party-executors/`:
 
 ```bash
-npm install
-npm run check
-npm run pack:check
 npm publish --access public
 ```
 
-Keep the main SDK package version and the adapter package version aligned.
+Each package's `prepublishOnly` hook reruns its checks: `npm run check:all` for
+the core SDK and `npm run check` for the adapter.
 
 ## Related Docs
 

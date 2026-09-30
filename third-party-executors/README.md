@@ -1,32 +1,28 @@
 # @402flow/sdk-third-party-executors
 
-Official supported delegated-execution adapters for `@402flow/sdk`.
+Official delegated-execution adapters for `@402flow/sdk`:
 
-This package is intentionally separate from the main `@402flow/sdk` package so the core SDK stays provider-neutral while officially supported provider adapters can evolve on their own dependency surface.
+1. Dexter
+2. pay.sh, for the x402 `exact` scheme on Solana
 
-Current scope:
-
-1. Dexter delegated-execution adapter
-2. pay.sh x402 Solana exact delegated-execution adapter
+The adapters ship separately so the core SDK stays provider-neutral and the
+provider dependencies can change on their own schedule.
 
 ## Install
 
-This adapter package requires Node 20.18 or newer because of its Solana
-dependency surface.
-
-Install this package alongside the matching `@402flow/sdk` version.
+This package requires Node 20.18 or newer because of its Solana dependencies.
+It is versioned in lockstep with `@402flow/sdk`, and its peer dependency pins the
+exact matching SDK version. Install both together:
 
 ```bash
 npm install @402flow/sdk @402flow/sdk-third-party-executors
 ```
 
-If you pin versions explicitly, pin both packages to the same version:
+If you pin versions, pin both packages to the same version:
 
 ```bash
 npm install @402flow/sdk@<version> @402flow/sdk-third-party-executors@<version>
 ```
-
-This adapter package is versioned and supported in lockstep with `@402flow/sdk`, so keep the two package versions aligned.
 
 ## Choose A Provider
 
@@ -37,10 +33,9 @@ import { createDexterExecutor } from '@402flow/sdk-third-party-executors/dexter'
 import { createPayShExecutor } from '@402flow/sdk-third-party-executors/pay-sh';
 ```
 
-Prefer the provider-specific subpath you use. This prevents the other adapter
-from loading at runtime and lets bundlers exclude it. It does not change what
-npm installs: this combined package currently declares both provider dependency
-trees.
+Import the provider-specific subpath you use. The other adapter then does not
+load at runtime, and bundlers can exclude it. npm still installs both providers'
+dependencies, because this combined package declares both.
 
 Constructor options:
 
@@ -49,7 +44,7 @@ Constructor options:
 | Dexter | `wallets` from `@dexterai/x402/client` | `payAndFetchOptions` |
 | pay.sh | a Solana `signer` accepted by `@x402/svm` | `fetch`, `networks`, `paymentRequirementsSelector`, `policies`, `rpcUrl`, `x402HttpClient` |
 
-Pass the selected adapter to the prepared execution call:
+Pass the adapter to `executePreparedRequest()`:
 
 ```ts
 const prepared = await client.preparePaidRequest(url, requestInit);
@@ -68,66 +63,67 @@ if (prepared.kind === 'ready' && prepared.nextAction === 'execute') {
 }
 ```
 
-Complete executable examples:
+Complete runnable examples:
 
 1. [`examples/dexter-delegated-executor.mjs`](examples/dexter-delegated-executor.mjs)
 2. [`examples/pay-sh-delegated-executor.mjs`](examples/pay-sh-delegated-executor.mjs)
 
-Both examples require 402flow credentials and provider signing credentials.
-Run either command with `--help` before submitting a paid request.
+Both examples need 402flow credentials and provider signing credentials. Run
+either command with `--help` before you submit a paid request.
 
 ### Dexter Network Boundary
 
-`@dexterai/x402` 5.4.2 resolves Base and Solana mainnet, but it does not resolve
-Base Sepolia or Solana devnet. The hosted demo routes validate the native
-402flow SDK flow; they cannot validate a Dexter settlement. Against either
-hosted test route, Dexter returns `no_payment_options` before wallet signing and
-this adapter normalizes it to a typed `preflight_failed` result.
+`@dexterai/x402` 5.4.2 resolves Base and Solana mainnet, but not Base Sepolia or
+Solana devnet. The hosted demo test routes therefore validate the native 402flow
+SDK flow but cannot validate a Dexter settlement. Against either test route,
+Dexter returns `no_payment_options` before wallet signing, and this adapter
+normalizes that to a typed `preflight_failed` result.
 
-A full Dexter settlement requires a supported network and a funded wallet. Do
-not move an integration test to mainnet merely to bypass the testnet limitation;
+A full Dexter settlement needs a supported network and a funded wallet. Do not
+move an integration test to mainnet only to get around the testnet limitation;
 use an intentional, spend-capped verification plan.
 
 ## Dependency Footprint
 
-The core `@402flow/sdk` package depends only on Zod. The optional combined
-adapter package installs both provider stacks. The package pins
-`@dexterai/x402` because its payment and result contracts are part of this
-adapter's tested runtime boundary.
+The core `@402flow/sdk` package depends only on Zod. This adapter package
+installs both provider stacks. It pins `@dexterai/x402` exactly because Dexter's
+payment and result contracts are part of the adapter's tested runtime boundary.
 
-Dexter 5.4.2 currently brings a legacy Solana dependency path even when your
-Dexter wallet is EVM-only. `npm audit --omit=dev` reports the
-`bigint-buffer` advisory through `@solana/spl-token` and `@dexterai/vault`,
-with no upstream fix available. Review that advisory against your deployment
-and threat model. Do not force transitive cryptography or Solana overrides.
+Dexter 5.4.2 pulls in a legacy Solana dependency path even when your Dexter
+wallet is EVM-only. `npm audit --omit=dev` reports the `bigint-buffer` advisory
+through `@solana/spl-token` and `@dexterai/vault`, with no upstream fix
+available. Review that advisory against your deployment and threat model. Do not
+force transitive cryptography or Solana overrides.
 
-A future breaking release can split provider packages or move provider SDKs to
-optional peer dependencies. That change must not be made in a patch release
-because it changes installation and runtime resolution behavior.
+A future breaking release may split the providers into separate packages or make
+their SDKs optional peer dependencies. That change cannot ship in a patch
+release, because it changes installation and runtime resolution.
 
-The main SDK package owns:
+## Ownership
+
+The core `@402flow/sdk` package owns:
 
 1. the public executor contract
 2. delegated authorization and finalization
-3. outward result normalization to `PaidResponse` or `FetchPaidError`
+3. normalization of results to `PaidResponse` or `FetchPaidError`
 
 This package owns:
 
-1. provider-specific adapter implementations
+1. the provider-specific adapter implementations
 2. provider-specific proof tests
-3. source-level examples in this repo under `third-party-executors/examples/`
+3. the examples under `third-party-executors/examples/`
 
 ## In-Repo Verification
 
-If you are working in this repo, useful commands are:
+From `third-party-executors/`:
 
 1. `npm run check`
 2. `npm run pack:check`
 3. `npm run example:dexter-delegated-executor -- --help`
 4. `npm run example:pay-sh-delegated-executor -- --help`
 
-From the SDK root, you can also run `npm run check:all` to validate both the main SDK package and this package in one pass.
+From the SDK root, `npm run check:all` checks both the core SDK and this package.
 
 ## Release Order
 
-When publishing from this repo, publish the main `@402flow/sdk` package first, then publish `@402flow/sdk-third-party-executors` after the matching SDK version is available.
+Publish the matching `@402flow/sdk` version first, then this package.

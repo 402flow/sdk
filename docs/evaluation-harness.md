@@ -1,147 +1,139 @@
 # Evaluation Runner on AgentHarness
 
-This document covers the optional evaluation runner built on top of `AgentHarness`.
+This document covers the example evaluation runner under `examples/`. The runner
+is built on `AgentHarness` (`src/agent-harness.ts`). There is no separate SDK
+module named `evaluation-harness`, and the runner is not part of the core SDK
+contract: `AgentPayClient`, `fetchPaid()`, `preparePaidRequest()`, and
+`executePreparedRequest()`.
 
-It does not describe a second SDK module named `evaluation-harness`. The reusable SDK wrapper is `AgentHarness` in `src/agent-harness.ts`; this document is about the example runner and its supporting files under `examples/`.
+## Why `preparedId`
 
-It is not the core SDK contract. The core package surface remains:
+`AgentHarness` gives a model host a tool surface keyed by `preparedId`. The host
+keeps the full prepared request in process memory and gives the model a short
+opaque ID. Later tool calls use that ID to execute the request or read the
+stored result.
 
-1. `AgentPayClient`
-2. `preparePaidRequest(...)`
-3. `executePreparedRequest(...)`
-4. `fetchPaid(...)`
+Passing a short ID between turns is easier, safer, and cheaper than asking the
+model to reproduce a large prepared object exactly. If your application can hold
+the prepared object itself, use the core SDK directly.
 
-Use the harness when you want a preparedId-based tool surface for a model host, especially the repo-local OpenAI Responses examples under `examples/openai-tools-quickstart.mjs` and `examples/openai-agent-harness.mjs`.
-
-That means the host stores the full prepared request state in process memory and gives the model a small opaque `preparedId` instead of asking it to carry the entire prepared object across turns. Later tool calls use that `preparedId` to execute the prepared request or read back the stored in-memory result.
-
-This matters for tool-calling hosts because passing a short stable id between turns is usually easier, safer, and cheaper than expecting the model to preserve a larger structured prepared request exactly. If your application can safely hold the prepared object itself, use the core SDK directly instead of `AgentHarness`.
+The repository has two OpenAI Responses examples built on the harness: the small
+`examples/openai-tools-quickstart.mjs` and the larger evaluation runner
+`examples/openai-agent-harness.mjs`.
 
 ## Boundary
 
-The boundary is:
+1. Core SDK: `AgentPayClient`, `preparePaidRequest()`, `executePreparedRequest()`, and their preparation and result contracts.
+2. Optional wrapper: `AgentHarness`, which exposes that flow as a `preparedId`-based tool contract.
+3. Example runners: the OpenAI quickstart, the evaluation runner, and the scenario files under `examples/`.
 
-1. core SDK: `AgentPayClient`, `preparePaidRequest(...)`, `executePreparedRequest(...)`, and the preparation and result contracts
-2. optional portable wrapper: `AgentHarness`, which turns that flow into a preparedId-based tool contract
-3. example-only runners: the tiny OpenAI quickstart plus the larger evaluation script and scenario scaffolding under `examples/`
+`AgentHarness` adds no provider abstraction layer.
 
-The harness is intentionally narrow. It does not add a provider abstraction layer.
+## What The Model Sees
 
-## Payload Visibility Limitation
-
-The stored in-memory execution result behind `AgentHarness` is not the same thing as automatically returning the merchant response body to the model.
-
-What the model actually sees depends on the host tool implementation:
-
-1. the harness can store deterministic execution state behind a `preparedId`
-2. the tool host decides what parts of that state are returned in tool output
-3. a stored in-memory result does not by itself guarantee that the model saw the full merchant payload
-
-That distinction matters when evaluating transcripts or tool behavior.
+The harness stores execution state behind a `preparedId`, and the host's tool
+implementation decides which parts of that state to return to the model. A
+stored result does not prove that the model saw the full merchant payload. When
+you evaluate a transcript, check what the tools actually returned.
 
 ## Tool Surface
 
-The OpenAI example exposes exactly three model-callable tools:
+The OpenAI examples expose exactly three model-callable tools:
 
 1. `prepare_paid_request`
 2. `execute_prepared_request`
 3. `get_execution_result`
 
-Those tool definitions are not maintained as OpenAI-only prompt text. The example runtime imports the canonical host-agnostic metadata exported by the SDK:
+The examples build these tools from the host-agnostic metadata that the SDK
+exports, `defaultHarnessInstructions` and `defaultHarnessToolSpecs`, rather than
+from OpenAI-specific prompt text. Every host adapter uses the same contract:
 
-1. `defaultHarnessInstructions`
-2. `defaultHarnessToolSpecs`
+1. Prepare every request before any paid execution.
+2. Execute only when preparation returns `nextAction: execute`.
+3. On `treat_as_passthrough`, do not pay. Explain that payment is not required.
+4. On `revise_request`, use `validationIssues` and hints to revise only when the task supplies enough information. Otherwise, stop and say what is missing.
+5. Use `externalMetadata` only when the caller already has endpoint metadata. Treat it as advisory when it disagrees with merchant challenge hints.
+6. Do not invent missing business parameters. Do not execute the same prepared request twice unless the caller explicitly asks for a retry.
+7. After execution, read the stored result and report denied, pending, failed, or inconclusive outcomes clearly.
 
-That keeps the orchestration contract in one place while still letting each host adapter build provider-specific tool objects.
-
-At a high level, the canonical contract is:
-
-1. always prepare a request before any paid execution
-2. execute only when preparation returns `nextAction: execute`
-3. if preparation returns `treat_as_passthrough`, do not pay and explain that paid execution is not required
-4. if preparation returns `revise_request`, use `validationIssues` and hints to revise only when the task provides enough information; otherwise stop and explain what is still missing
-5. use `externalMetadata` only when the caller already has endpoint metadata, and treat it as advisory when merchant challenge hints disagree
-6. do not invent missing business parameters or execute the same prepared request twice unless the caller explicitly asks for a retry
-7. after execution, read the stored execution result and report denied, pending, failed, or inconclusive outcomes clearly
-
-The OpenAI example follows that contract by returning the harness prepare result directly from the tool handler, then requiring the model to call `get_execution_result` before summarizing the outcome.
+The OpenAI examples return the harness prepare result directly from the tool
+handler. The model must call `get_execution_result` before it summarizes the
+outcome.
 
 ## Prepared Surface
 
-Today, the host-facing prepare result returned by `AgentHarness` includes:
+The prepare result that `AgentHarness` returns to the host includes:
 
-1. `preparedId`
-2. `costSummary`
-3. `challengeDetails`
-4. `paymentRequirement`
-5. `hints`
-6. `validationIssues`
-7. `nextAction`
+1. `preparedId` and `preparationLineageId`
+2. `kind` and `nextAction`
+3. `costSummary`, a human-readable payment summary for the agent
+4. `paymentRequirement` and `challengeDetails`
+5. `hints` and `validationIssues`
+6. `expiresAt`
 
-`costSummary` is the human-readable payment summary intended for agent-facing use.
+`challengeDetails` and `paymentRequirement` remain visible by default. The
+Bazaar revise scenarios still depend on the merchant challenge, and it is not
+yet proven that `hints` can replace everything useful in
+`challengeDetails.extensions`. Treat `hints` as the main revise surface, and keep
+`challengeDetails` visible until revise coverage shows it is safe to hide.
 
-`challengeDetails` and `paymentRequirement` are still surfaced by default. That is intentional for now. Bazaar-style revise scenarios still validate the current merchant-challenge path, and the SDK has not yet proven that `hints` alone fully replaces every useful piece of `challengeDetails.extensions` in agent-facing flows.
+## Storage And Execution
 
-So the current rule is:
+`AgentHarness` keeps prepared state in memory behind `preparedId`:
 
-1. prefer `hints` as the main revise surface
-2. keep `challengeDetails` visible by default until revise coverage proves it is safe to hide
-
-## Storage And Execute Semantics
-
-`AgentHarness` keeps prepare state in memory behind `preparedId`.
-
-Important behavior:
-
-1. state and execution results live only in memory inside the current process; they are not durable across process restarts or shared across hosts
-2. expiry is checked lazily when a record is accessed; there is no background cleanup loop
-3. every preparation belongs to a preparation lineage identified by `preparationLineageId`; passing an earlier preparation's `preparationLineageId` into a new prepare call supersedes the older active preparations in that lineage only, while preparations in different lineages never supersede one another, even for the same endpoint
-4. concurrent execute calls for the same active `preparedId` share one in-flight execution in that same process
-5. a dispatched `preparedId` is consumed when execution settles, including when a transport error escapes without a known outcome; the error still reaches the caller, and later execute calls return a stable harness-local rejection
-6. a consumed record without an execution result does not prove that no payment occurred; reconcile the outcome and follow the [compatibility retry guidance](compatibility.md#safe-retries) before an explicit retry
-7. an explicit retry requires a new preparation; for the same URL, method, body, agent identity, and business operation, pass the original business idempotency key in `executionContext`
+1. State and results live only in the current process. They do not survive a restart and are not shared across hosts.
+2. Prepared records expire after five minutes by default (`preparedTtlMs`). Expiry is checked when a record is accessed; there is no background cleanup.
+3. Each preparation belongs to a lineage identified by `preparationLineageId`. Passing an earlier `preparationLineageId` into a new prepare call supersedes the active preparations in that lineage only. Preparations in different lineages never supersede one another, even for the same endpoint.
+4. Concurrent execute calls for the same active `preparedId` share one in-flight execution within the process.
+5. A dispatched `preparedId` is consumed when execution settles, including when a transport error escapes without a known outcome. The caller still receives the error, and later execute calls return a stable harness-local rejection.
+6. A consumed record without an execution result does not prove that no payment occurred. Reconcile the outcome and follow the [retry guidance](compatibility.md#safe-retries) before an explicit retry.
+7. An explicit retry needs a new preparation. For the same URL, method, body, agent identity, and business operation, pass the original business idempotency key in `executionContext`.
 
 ## Environment
 
-Create a repo-local SDK env file first:
+Create an SDK-local env file:
 
 ```bash
 cp .env.example .env
 ```
 
-The example runner loads `.env.local` and `.env` from the SDK root, then keeps any already-exported shell environment values.
+The runner loads `.env.local` and `.env` from the SDK root. Variables already
+exported in the shell take precedence. The runner never reads another
+repository's env file.
 
-The expected SDK environment values are:
+Set these values:
 
-```bash
-export OPENAI_API_KEY="..."
-export X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
-export X402FLOW_ORGANIZATION="acme-labs"
-export X402FLOW_AGENT="reporting-worker"
-export X402FLOW_BOOTSTRAP_KEY="..."
+```ini
+OPENAI_API_KEY="..."
+X402FLOW_CONTROL_PLANE_BASE_URL="https://api-staging.402flow.ai"
+X402FLOW_ORGANIZATION="acme-labs"
+X402FLOW_AGENT="research-worker"
+X402FLOW_BOOTSTRAP_KEY="..."
 ```
 
-Runtime-token auth also works if you set `X402FLOW_RUNTIME_TOKEN` instead of `X402FLOW_BOOTSTRAP_KEY`.
+For runtime-token auth, set `X402FLOW_RUNTIME_TOKEN` instead of
+`X402FLOW_BOOTSTRAP_KEY`. To use a local control plane instead of staging, change
+`X402FLOW_CONTROL_PLANE_BASE_URL`.
 
-That keeps the evaluation runner self-contained in the SDK repo. The default control plane is staging, but you can still point it at local `agent-pay` when needed without reading another repository's env file.
-
-First-party examples default to the demo merchant at `https://demo-merchant-staging.402flow.ai`. Set `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="http://127.0.0.1:4123"` when you want repo-local self-hosted demo-merchant runs instead.
+First-party scenarios use the hosted demo merchant at
+`https://demo-merchant-staging.402flow.ai`. To use a self-hosted demo merchant,
+set `X402FLOW_FIRST_PARTY_MERCHANT_BASE_URL="http://127.0.0.1:4123"`.
 
 ## Basic Run
 
-For the smallest runnable host example:
+The smallest host example:
 
 ```bash
 npm run example:openai-tools-quickstart -- --help
 ```
 
-For the larger evaluation runner, use a direct prompt:
+The evaluation runner with a direct prompt:
 
 ```bash
 npm run example:openai-harness -- --prompt "Prepare and execute a paid POST request to https://demo-merchant-staging.402flow.ai/demo-merchant/research-brief/solana-devnet with JSON body {\"topic\":\"sdk integration rollout\",\"audience\":\"platform engineers\",\"format\":\"bullets\"}"
 ```
 
-You can also use a named preset and scenario:
+The evaluation runner with a named preset and scenario:
 
 ```bash
 npm run example:openai-harness -- \
@@ -151,49 +143,47 @@ npm run example:openai-harness -- \
 
 ## Flags
 
-Supported flags:
+1. `--prompt <text>`: run a direct prompt
+2. `--preset <name>`: use a built-in prompt preset
+3. `--scenario <name>`: load a named scenario fixture pack
+4. `--list-presets`: print the available presets
+5. `--list-scenarios`: print the available scenarios
+6. `--model <id>`: override `OPENAI_MODEL` (default `gpt-5.4`)
+7. `--max-turns <n>`: cap the tool loop
+8. `--ttl-ms <n>`: change prepared-request expiry for the session
+9. `--transcript-file <path>`: save the run transcript as JSON
 
-1. `--model <id>` to override `OPENAI_MODEL`
-2. `--preset <name>` to use a canned prompt preset
-3. `--scenario <name>` to load a named scenario fixture pack
-4. `--list-presets` to print available presets
-5. `--list-scenarios` to print available scenarios
-6. `--max-turns <n>` to cap the tool loop
-7. `--ttl-ms <n>` to change prepared-request expiry for the session
-8. `--transcript-file <path>` to persist the run transcript as JSON
-
-The runner rejects using `--prompt` and `--preset` together.
+`--prompt` and `--preset` cannot be combined.
 
 ## Presets
 
-Built-in prompt presets:
+1. `ready-json-post`: prepare and execute a JSON POST request, with the body, headers, and optional external metadata supplied as inline JSON or JSON files
+2. `revise-json-post`: prepare a JSON POST request, revise once if validation issues require it, and execute only after the revised request is ready
+3. `revise-get-query`: start with a bare GET URL, derive the required query parameters from preparation hints, revise once, and execute
+4. `inspect-only`: prepare once, then stop after summarizing `nextAction` and `validationIssues`
+5. `mock-governance`: run the normal prepare, execute, and get-result loop against mocked governance outcomes, such as denials, preflight failures, and inconclusive execution
 
-1. `ready-json-post`: prepare and execute a JSON POST request using inline JSON or JSON fixture files for body, headers, and optional external metadata
-2. `revise-json-post`: prepare a JSON POST request, revise once if validation issues require it, then execute only after the revised request is ready
-3. `revise-get-query`: start with a bare GET URL, derive required query params from preparation hints, revise once, then execute
-4. `inspect-only`: prepare once and stop after summarizing `nextAction` and `validationIssues`
-5. `mock-governance`: run the normal prepare, execute, and get-result loop against fixture-driven mocked governance outcomes such as denials, preflight failures, and inconclusive execution
-
-For JSON-backed preset inputs, use either the inline `*_JSON` env var or the file-backed `*_FILE` env var for a given input, not both.
-
-Supported preset inputs include:
+Presets read these inputs from the environment:
 
 1. `AGENT_HARNESS_TARGET_URL`
 2. `AGENT_HARNESS_HEADERS_JSON` or `AGENT_HARNESS_HEADERS_FILE`
 3. `AGENT_HARNESS_BODY_JSON` or `AGENT_HARNESS_BODY_FILE`
 4. `AGENT_HARNESS_EXTERNAL_METADATA_JSON` or `AGENT_HARNESS_EXTERNAL_METADATA_FILE`
-5. `AGENT_HARNESS_TASK` for some reasoning-oriented scenarios
+5. `AGENT_HARNESS_TASK`, for some reasoning-oriented scenarios
+
+Set either the inline `*_JSON` variable or the `*_FILE` variable for each input,
+not both.
 
 ## Transcripts
 
-Use `--transcript-file` to write the prompt, tool calls, and final answer as JSON.
-
-If you omit `--transcript-file` but use a named scenario, the runner defaults to:
+`--transcript-file` writes the prompt, tool calls, and final answer as JSON. With
+a named scenario and no `--transcript-file`, the runner writes to:
 
 ```text
-./tmp/<scenario>-run-<timestamp>.json
+./tmp/scenario-runs/<scenario>-run-<timestamp>.json
 ```
 
-## More
+## Scenarios
 
-For scenario packs, local paths, and public compatibility targets, see [docs/harness-scenarios.md](harness-scenarios.md).
+For scenario packs, self-hosted merchant paths, and public compatibility
+targets, see [harness-scenarios.md](harness-scenarios.md).

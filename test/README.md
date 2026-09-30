@@ -1,37 +1,33 @@
-## Test Folder Purpose
+# SDK Tests
 
-This folder is reserved for cross-module and integration-like SDK tests.
-
-Use `test/` for specs that exercise one or more of these boundaries:
+This folder holds cross-module and integration-style SDK tests: specs that
+exercise one or more of these boundaries:
 
 1. public package entrypoints and exports
 2. multi-module SDK flows
-3. broader request or execution scenarios that are not naturally owned by one source file
+3. broader request or execution scenarios that no single source file owns
 
-Third-party executor proof packages maintain their own tests outside this folder.
-
-Examples in this folder:
+Examples:
 
 1. `public-api.test.ts` checks the published package surface
-2. `agent-pay-client.integration.test.ts` covers broader `AgentPayClient` behavior across multiple modules
-3. `agent-harness.integration.test.ts` exercises SDK-backed harness preparation and execution flows
+2. `agent-pay-client.integration.test.ts` covers broader `AgentPayClient` behavior across modules
+3. `agent-harness.integration.test.ts` exercises SDK-backed harness preparation and execution
 
 ## Unit Test Placement
 
-Keep unit tests next to the source file they primarily verify.
+Keep a unit test next to the source file it mainly verifies. Use a colocated
+`src/*.test.ts` file when the test is about one module's local behavior, parsing
+rules, or helpers. For example:
 
-Use colocated `src/*.test.ts` files when the test is mostly about one module's local behavior, parsing rules, or helper logic.
-
-Example:
-
-1. `src/challenge-detection.test.ts` stays next to `src/challenge-detection.ts` because it is a tight module-level test
-2. `src/index.test.ts` stays next to `src/index.ts` for entrypoint-local client behavior such as challenge forwarding, request hashing, and runtime-token handling
-3. `src/agent-harness.test.ts` stays next to `src/agent-harness.ts` for harness-local state transitions, rejection rules, and cost-summary formatting
+1. `src/challenge-detection.test.ts` covers `src/challenge-detection.ts`
+2. `src/index.test.ts` covers entrypoint-local client behavior in `src/index.ts`, such as challenge forwarding, request hashing, and runtime-token handling
+3. `src/agent-harness.test.ts` covers harness-local state transitions, rejection rules, and cost-summary formatting in `src/agent-harness.ts`
 
 ## Rule Of Thumb
 
-If a test would still make sense after replacing its imports with a single nearby source file, keep it in `src/` next to that file.
+If a test would still make sense with its imports replaced by one nearby source
+file, keep it in `src/` next to that file. If it is mainly about interactions
+across modules or package exports, put it in `test/`.
 
-If a test is primarily about interactions across modules or package exports, put it in `test/`.
-
-If a test is primarily about a separate third-party executor package such as `third-party-executors/`, keep it with that package instead of the main SDK test folder.
+Tests for the third-party executor package live with that package in
+`third-party-executors/`, not here.

@@ -1,17 +1,11 @@
 # SDK Guide
 
-This guide holds the longer-form usage material for `@402flow/sdk`.
-
-For the package front door, start with the root [README](../README.md).
-For model-host details, see [evaluation-harness.md](evaluation-harness.md).
-For the hosted Agents API capability probe and durable testnet launcher, see
-[the reference integration](../examples/openai-agents-api/README.md). Stage 1
-passed hosted validation with the local 0.1.3 artifact. One authenticated hosted
-Base Sepolia purchase against AWS staging is confirmed by read-only receipt,
-audit, and ledger reconciliation. A separate hosted policy-review rejection
-passed with no payment attempt, receipt, or ledger entry. Broader recovery checks
-remain deferred.
-For scenario packs and first-party versus third-party evaluation paths, see [harness-scenarios.md](harness-scenarios.md).
+This guide covers `@402flow/sdk` in more depth than the root
+[README](../README.md). For model-host wrappers, see
+[evaluation-harness.md](evaluation-harness.md). For scenario packs, see
+[harness-scenarios.md](harness-scenarios.md). For a hosted agent that makes a
+governed testnet purchase, see the
+[OpenAI Agents API reference integration](../examples/openai-agents-api/README.md).
 
 ## Install
 
@@ -19,24 +13,18 @@ For scenario packs and first-party versus third-party evaluation paths, see [har
 npm install @402flow/sdk
 ```
 
-Optional official adapters for third-party payers:
+The SDK requires Node 20 or newer. To delegate payment to Dexter or pay.sh, also
+install the optional adapter package:
 
 ```bash
 npm install @402flow/sdk @402flow/sdk-third-party-executors
 ```
 
-The published package supports Node 20+.
+## Request Bodies
 
-## Runtime Notes
-
-Two runtime constraints matter early in real integrations:
-
-1. paid prepare and execute flows require replayable request bodies
-2. the current replayable body types are `string` and `URLSearchParams`
-
-That means JSON payloads should be sent as strings, and form-style payloads should be sent as `URLSearchParams`.
-
-The SDK exports helpers for both:
+Paid flows replay the exact request body through preparation and execution, so
+the body must be a `string` or `URLSearchParams`. Send JSON as a string and form
+data as `URLSearchParams`. The SDK exports a helper for each:
 
 ```ts
 import {
@@ -55,7 +43,8 @@ const formBody = createFormUrlEncodedBody({
 });
 ```
 
-`FormData`, `Blob`, streams, and framework-specific body wrappers are not currently accepted in paid flows because the SDK has to replay the exact request body through preparation and execution.
+`FormData`, `Blob`, streams, and framework-specific body wrappers are not
+accepted in paid flows.
 
 ## Create A Client
 
@@ -63,7 +52,9 @@ Create one `AgentPayClient` per agent identity.
 
 ### Bootstrap Key
 
-For most SDK integrations, bootstrap-key auth is the recommended mode. The SDK exchanges it for a short-lived runtime token, caches that token, and refreshes it automatically before expiry.
+Bootstrap-key auth is the recommended mode for most integrations. The SDK
+exchanges the key for a short-lived runtime token, caches the token, and
+refreshes it before it expires.
 
 ```ts
 import { AgentPayClient } from '@402flow/sdk';
@@ -72,7 +63,7 @@ const client = new AgentPayClient({
   controlPlaneBaseUrl:
     process.env.X402FLOW_CONTROL_PLANE_BASE_URL ?? 'https://api-staging.402flow.ai',
   organization: process.env.X402FLOW_ORGANIZATION ?? 'acme-labs',
-  agent: process.env.X402FLOW_AGENT ?? 'reporting-worker',
+  agent: process.env.X402FLOW_AGENT ?? 'research-worker',
   auth: {
     type: 'bootstrapKey',
     bootstrapKey: process.env.X402FLOW_BOOTSTRAP_KEY ?? '',
@@ -82,6 +73,8 @@ const client = new AgentPayClient({
 
 ### Runtime Token
 
+If you already have a runtime token, pass it directly:
+
 ```ts
 import { AgentPayClient } from '@402flow/sdk';
 
@@ -89,7 +82,7 @@ const client = new AgentPayClient({
   controlPlaneBaseUrl:
     process.env.X402FLOW_CONTROL_PLANE_BASE_URL ?? 'https://api-staging.402flow.ai',
   organization: process.env.X402FLOW_ORGANIZATION ?? 'acme-labs',
-  agent: process.env.X402FLOW_AGENT ?? 'reporting-worker',
+  agent: process.env.X402FLOW_AGENT ?? 'research-worker',
   auth: {
     type: 'runtimeToken',
     runtimeToken: process.env.X402FLOW_RUNTIME_TOKEN ?? '',
@@ -132,30 +125,35 @@ if (result.kind === 'success') {
 }
 ```
 
-If the merchant does not require payment for that exact request, the SDK returns a passthrough response.
-If the merchant returns a payable challenge, the SDK asks the control plane for a paid decision, resolves payment, and returns a receipt-backed paid response.
+If the merchant does not require payment for that exact request, the SDK returns
+a passthrough response. If the merchant returns a payable challenge, the SDK asks
+the control plane for a decision, pays, and returns a paid response with a
+receipt.
 
-`result.response` is always the merchant HTTP response.
-SDK-owned payment metadata such as `paidRequestId`, `paymentAttemptId`, `receiptId`, and `receipt` stays on the SDK result instead of being injected into the merchant JSON body.
+`result.response` is always the merchant's HTTP response. Payment metadata such
+as `paidRequestId`, `paymentAttemptId`, `receiptId`, and `receipt` is on the SDK
+result. The SDK does not inject it into the merchant body.
 
-### Important Probe Semantics
+### Merchant Probe
 
-When you do not supply `request.challenge` to `fetchPaid()` or `options.challenge` to `preparePaidRequest()`, the SDK first sends the original HTTP request to the merchant to detect whether payment is required.
+When you do not pass `request.challenge` to `fetchPaid()` or
+`options.challenge` to `preparePaidRequest()`, the SDK first sends the original
+request to the merchant to detect whether payment is required. This probe
+happens before any control-plane authorization or settlement.
 
-That initial merchant probe happens before any control-plane authorization or settlement attempt.
+For non-idempotent `POST` routes, rely on the probe only when the merchant
+supports safe probing. Otherwise, pass the challenge you already have.
 
-For non-idempotent `POST` routes, only use probe-based flows when the merchant explicitly supports safe probing, or when you already have a merchant challenge and pass it to the SDK directly.
-
-The original `RequestInit.signal` applies to this merchant probe. A prepared
-request does not store the signal. To apply a timeout to every merchant and
-control-plane network call, provide a custom `fetch` when creating the client.
-See [`examples/typescript/timeout-client.ts`](../examples/typescript/timeout-client.ts).
+The original `RequestInit.signal` applies to this probe. A prepared request does
+not store the signal. To time out every merchant and control-plane call, provide
+a custom `fetch` when you create the client. See
+[`examples/typescript/timeout-client.ts`](../examples/typescript/timeout-client.ts).
 
 ### Optional Attribution
 
-Most integrations do not need attribution at all.
-
-Use it when you already know where the endpoint came from and want that provenance to survive into control-plane audit and reporting.
+Most integrations do not need attribution. Use it when you know where the
+endpoint came from and want that provenance recorded in control-plane audit and
+reporting.
 
 ```ts
 const result = await client.fetchPaid(
@@ -182,7 +180,7 @@ const result = await client.fetchPaid(
 
 ## Inspect First: `preparePaidRequest()`
 
-Use `preparePaidRequest()` when the caller needs a first-class pre-execution result before paying.
+Use `preparePaidRequest()` to inspect a request before paying.
 
 ```ts
 import { createJsonRequestBody } from '@402flow/sdk';
@@ -205,43 +203,34 @@ console.log(prepared.validationIssues);
 console.log(prepared.hints);
 ```
 
-This flow is useful when:
+Preparation helps when:
 
-1. an agent needs request-shape hints before attempting execution
+1. an agent needs request-shape hints before execution
 2. the caller wants normalized payment terms before paying
-3. the caller wants to merge optional `externalMetadata` it already has from another system
+3. the caller has `externalMetadata` from another system to merge in
 
-The common loop is:
-
-1. prepare the request
-2. inspect `kind`, `paymentRequirement`, `hints`, `validationIssues`, and `nextAction`
-3. revise if needed
-4. execute only once the request is understood
+The usual loop is to prepare the request; inspect `kind`, `paymentRequirement`,
+`hints`, `validationIssues`, and `nextAction`; revise if needed; and execute
+only when `kind === 'ready'` and `nextAction === 'execute'`.
 
 ### `externalMetadata` vs `attribution`
 
-These two inputs solve different problems.
-
-1. `externalMetadata` helps the SDK understand request shape before execution
-2. `attribution` helps the control plane explain where the paid endpoint came from after execution
-
-Use `externalMetadata` for request hints.
-Use `attribution` for provenance.
+`externalMetadata` describes the request shape before execution. The SDK treats
+it as advisory. `attribution` records where the endpoint came from, for
+control-plane audit and reporting after execution.
 
 ### What `ready` Means
 
-`ready` means this exact request can proceed through governed paid execution as-is.
-It does not mean the SDK has inferred the best task parameters for you.
-
-That distinction matters:
-
-1. `ready` is about protocol and payment executability
-2. `validationIssues` and `hints` are about request-shape guidance
-3. choosing semantically correct task parameters still belongs to the caller or agent
+`ready` means this exact request can proceed through governed paid execution as
+it is. It covers protocol and payment executability only. `validationIssues` and
+`hints` give request-shape guidance, and the caller or agent still chooses the
+task parameters. The SDK does not infer the best parameters.
 
 ## Execute A Prepared Request
 
-If preparation returns `kind === 'ready'` and `nextAction === 'execute'`, execute that exact request with `executePreparedRequest(prepared, ...)`.
+When preparation returns `kind === 'ready'` and `nextAction === 'execute'`, pass
+the prepared request to `executePreparedRequest()`. It sends that exact request
+without probing the merchant again.
 
 ```ts
 if (prepared.kind === 'ready' && prepared.nextAction === 'execute') {
@@ -254,34 +243,32 @@ if (prepared.kind === 'ready' && prepared.nextAction === 'execute') {
 }
 ```
 
-If preparation does not return `kind === 'ready'`, that is not necessarily an error.
-It means this exact request did not currently resolve to a payable executable path.
+Any other preparation result is not necessarily an error. It means this exact
+request does not currently resolve to a payable path.
 
 ## Interpreting Merchant Responses
 
-The SDK gives you a stable place for payment metadata, but it does not invent a universal fulfilled-response schema for merchant content.
+The SDK standardizes payment metadata, not merchant content. The SDK result
+carries payment metadata such as `receiptId` and `receipt`. `result.response`
+carries the merchant's fulfillment payload, and the merchant's contract decides
+where the useful content lives in that payload.
 
-In practice:
+For request-shape guidance before execution, inspect the preparation result:
 
-1. the SDK result carries durable payment metadata such as `receiptId` and `receipt`
-2. `result.response` carries the merchant fulfillment payload
-3. the merchant contract decides where the useful paid content lives inside that payload
+1. `prepared.hints`: authoritative request fields, examples, notes, and query or body guidance, when the challenge publishes them
+2. `prepared.challengeDetails`: raw merchant challenge data, such as accepted payment candidates and extensions
+3. any `externalMetadata` you supplied: advisory context only
 
-If you need request-shape guidance before execution, use `preparePaidRequest()` and inspect:
-
-1. `prepared.hints` for authoritative request fields, examples, notes, and query or body guidance when the challenge publishes them
-2. `prepared.challengeDetails` for raw merchant challenge data such as accepted payment candidates and extensions
-3. optional caller-supplied `externalMetadata` as advisory context only
-
-If you do not have enough contract information to interpret a merchant response safely, return the raw merchant body and explain what is still missing instead of inventing a payload shape.
+If you lack the contract information to interpret a merchant response safely,
+return the raw merchant body and say what is missing. Do not guess the payload
+shape.
 
 ## Delegated Execution With Third-Party Payers
 
-`executePreparedRequest()` supports governed delegated execution through a caller-supplied executor interface.
-
-Once a payable challenge is already known, this lets the SDK keep authorization, policy, receipts, and final outcome normalization in the 402flow control plane while handing the final paid merchant call to a provider-specific executor owned by the host app or a separate integration package.
-
-That means you can use Dexter, pay.sh, or a host-owned executor without turning the main SDK into a provider-specific bundle.
+`executePreparedRequest()` can hand the final paid merchant call to an executor
+that you supply. The control plane still authorizes the attempt and finalizes
+the result, so policy, receipts, and outcome normalization stay governed. This
+keeps provider code for Dexter, pay.sh, or your own executor out of the core SDK.
 
 ```ts
 import {
@@ -322,17 +309,17 @@ if (prepared.kind === 'ready' && prepared.nextAction === 'execute') {
 }
 ```
 
-Responsibility split:
+The delegated flow:
 
-1. the SDK asks the control plane for delegated authorization
-2. if authorized, the SDK invokes your executor
-3. your executor performs the provider-specific paid request and returns a normalized result
-4. the SDK finalizes that result with the control plane
-5. the SDK returns the same outward `PaidResponse` or `FetchPaidError` contract as the direct path
+1. The SDK asks the control plane for delegated authorization.
+2. If authorized, the SDK calls your executor.
+3. Your executor makes the provider-specific paid request and returns a normalized result.
+4. The SDK finalizes that result with the control plane.
+5. The SDK returns the same `PaidResponse`, or throws the same `FetchPaidError`, as the native path.
 
-Official adapters live in `@402flow/sdk-third-party-executors` and the repo-local source for them lives in `third-party-executors/`.
-
-Prefer the provider-specific subpath you actually use:
+The official adapters are published as `@402flow/sdk-third-party-executors`,
+with source in `third-party-executors/`. Import only the provider subpath you
+use:
 
 ```ts
 import { createDexterExecutor } from '@402flow/sdk-third-party-executors/dexter';
@@ -342,38 +329,33 @@ import { createPayShExecutor } from '@402flow/sdk-third-party-executors/pay-sh';
 
 ## Result And Receipt Semantics
 
-`fetchPaid()` and `executePreparedRequest()` either:
+`fetchPaid()` and `executePreparedRequest()` do one of three things:
 
 1. return a passthrough response when the request did not require payment
-2. return success with a receipt when the paid request completed successfully
-3. throw `FetchPaidError` for all non-success paid outcomes
+2. return success with a receipt when the paid request completed
+3. throw `FetchPaidError` for every other paid outcome
 
-`FetchPaidError` kinds are:
+`FetchPaidError.kind` is one of `denied`, `preflight_failed`,
+`execution_pending`, `execution_failed`, `paid_fulfillment_failed`,
+`execution_inconclusive`, or `request_failed`.
 
-1. `denied`
-2. `preflight_failed`
-3. `execution_pending`
-4. `execution_failed`
-5. `paid_fulfillment_failed`
-6. `execution_inconclusive`
-7. `request_failed`
+Receipt status:
 
-Receipt notes:
+- `confirmed`: the control plane has attributed the paid attempt to on-chain settlement.
+- `provisional`: merchant-provided evidence supports the paid outcome, but settlement attribution is awaiting reconciliation. Treat it as evidence of a payment attempt, not proof of final settlement.
 
-1. `receipt.status = 'confirmed'` means the control plane has chain-backed settlement attribution for the paid attempt
-2. `receipt.status = 'provisional'` means the paid outcome was supportable by merchant-provided evidence, but final settlement attribution is still pending reconciliation
-3. callers should treat provisional receipts as payment-attempt evidence, not as proof of final settlement
-4. `idempotencyKey` is optional for normal SDK use, but you should set it for retrying callers or automation loops where duplicate suppression matters
+`idempotencyKey` is optional, but set it whenever a caller or automation loop
+might retry.
 
-For the full taxonomy and outcome-specific retry rules, read
-[SDK compatibility](compatibility.md). In particular:
+The [compatibility guide](compatibility.md) has the full taxonomy and retry
+rules. In short:
 
 1. retry uncertain operations with the same idempotency key
 2. do not retry `paid_fulfillment_failed` as a new payment
-3. reconcile `execution_pending` and `execution_inconclusive` before taking a new action
-4. treat probe aborts and timeouts as platform errors, not `FetchPaidError`
+3. reconcile `execution_pending` and `execution_inconclusive` before acting again
+4. probe aborts and timeouts are platform errors, not `FetchPaidError`
 
-Strict runnable examples live under [`examples/typescript/`](../examples/typescript/).
+Strict runnable examples are in [`examples/typescript/`](../examples/typescript/).
 
 ## Receipt Lookup
 
@@ -385,8 +367,9 @@ console.log(receipt.receipt.status);
 
 ## Canonical Host Metadata
 
-If you are building a tool host, do not copy orchestration rules into ad hoc prompts.
-Import the canonical host-agnostic metadata from the SDK and adapt it to your model provider.
+If you build a tool host, do not copy the orchestration rules into your own
+prompts. Import the SDK's host-agnostic metadata and adapt it to your model
+provider.
 
 ```ts
 import {
@@ -411,4 +394,4 @@ console.log(defaultHarnessToolSpecs);
 - [Evaluation harness](evaluation-harness.md)
 - [Harness scenarios](harness-scenarios.md)
 - [Third-party executors](../third-party-executors/README.md)
-- [Publishing](releasing.md)
+- [Releasing](releasing.md)
